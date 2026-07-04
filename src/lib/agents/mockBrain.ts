@@ -8,7 +8,14 @@
 //   • Once any wolf is exposed, the village uses voting-alignment ("who kept
 //     buddying the wolf?") to chain-catch the remaining wolves.
 
-import { Brain, NightDecision, PlayerView, VoteDecision } from "../engine/types";
+import {
+  AccuseDecision,
+  Brain,
+  NightDecision,
+  PlayerView,
+  VoteDecision,
+  WitchDecision,
+} from "../engine/types";
 import { makeRng, pick, Rng } from "../engine/rng";
 
 const SEER_CLAIM_TAG = "🔮 SEER —";
@@ -162,6 +169,31 @@ function render(view: PlayerView, stance: Stance, targetId: number | null, rng: 
   return template.replace(/\{target\}/g, target).replace(/\{me\}/g, view.self.name);
 }
 
+const WOLF_CHAT_PROPOSE = [
+  "I say we take {target} tonight — they're steering the village too well.",
+  "{target} worries me. One bite and the problem is gone.",
+  "Let's silence {target} before they put it together.",
+];
+const WOLF_CHAT_AGREE = [
+  "Agreed. {target} doesn't see the dawn.",
+  "Fine by me. {target} it is.",
+  "Then it's settled — {target}.",
+];
+const ACCUSE_FORMAL = [
+  "I formally accuse {target}. Their votes never add up.",
+  "It has to be {target}. Watch who they defend.",
+  "{target} has dodged every hard question. I accuse them.",
+];
+const JESTER_LINES = [
+  "Strange, isn't it, how I always seem to know where the bodies are…",
+  "Vote how you must. I was out walking by the mill last night, that's all.",
+  "Honestly? I wouldn't even blame you for voting me out. Just saying.",
+];
+
+function fillTarget(template: string, targetName: string): string {
+  return template.replace(/\{target\}/g, targetName);
+}
+
 export interface MockStyle {
   /** 0 = passive/quiet, 1 = aggressive accuser who rarely abstains. */
   aggression: number;
@@ -182,34 +214,43 @@ export class MockBrain implements Brain {
     this.style = style;
   }
 
+  /**
+   * Shared wolf target-picking heuristic: silence a revealed Seer first,
+   * otherwise eliminate whoever looks most dangerous to the pack. Used by
+   * both the night kill and wolf chat, so the pack's chatter matches its bite.
+   */
+  private wolfPick(view: PlayerView): number | null {
+    const nonWolves = view.aliveIds.filter((id) => !view.knownWolves.includes(id));
+    if (nonWolves.length === 0) return null;
+
+    // Priority: silence a revealed Seer. It's the village's engine.
+    const seers = seerClaimants(view).filter((id) => nonWolves.includes(id));
+    if (seers.length > 0) return pick(this.rng, seers);
+
+    // Otherwise take out whoever is closing in on the pack.
+    const threat = new Map<number, number>();
+    for (const v of view.votes) {
+      if (v.targetId !== null && view.knownWolves.includes(v.targetId)) {
+        threat.set(v.voterId, (threat.get(v.voterId) ?? 0) + 1);
+      }
+    }
+    let best = nonWolves[0];
+    let bestScore = -1;
+    for (const id of nonWolves) {
+      const score = (threat.get(id) ?? 0) * 2 + this.rng();
+      if (score > bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    return best;
+  }
+
   async nightAction(view: PlayerView): Promise<NightDecision> {
     if (view.self.role === "werewolf") {
-      const others = aliveOthers(view);
-      const nonWolves = view.aliveIds.filter((id) => !view.knownWolves.includes(id));
-      if (nonWolves.length === 0) return { targetId: null };
-
-      // Priority: silence a revealed Seer. It's the village's engine.
-      const seers = seerClaimants(view).filter((id) => nonWolves.includes(id));
-      if (seers.length > 0) return { targetId: pick(this.rng, seers), note: "Silence the Seer." };
-
-      // Otherwise take out whoever is closing in on the pack.
-      const threat = new Map<number, number>();
-      for (const v of view.votes) {
-        if (v.targetId !== null && view.knownWolves.includes(v.targetId)) {
-          threat.set(v.voterId, (threat.get(v.voterId) ?? 0) + 1);
-        }
-      }
-      let best = nonWolves[0];
-      let bestScore = -1;
-      for (const id of nonWolves) {
-        const score = (threat.get(id) ?? 0) * 2 + this.rng();
-        if (score > bestScore) {
-          bestScore = score;
-          best = id;
-        }
-      }
-      void others;
-      return { targetId: best, note: "Eliminate the villager most dangerous to the pack." };
+      const target = this.wolfPick(view);
+      if (target === null) return { targetId: null };
+      return { targetId: target, note: "Eliminate the villager most dangerous to the pack." };
     }
 
     if (view.self.role === "seer") {
@@ -248,6 +289,10 @@ export class MockBrain implements Brain {
 
     const claim = leaderOf(activeSeerClaims(view), this.rng, others);
 
+    if (view.self.role === "jester") {
+      return this.rng() < 0.5 ? pick(this.rng, JESTER_LINES) : render(view, "neutral", null, this.rng);
+    }
+
     if (view.self.alignment === "evil") {
       // If the Seer has fingered one of us, deflect onto a non-wolf.
       const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
@@ -279,6 +324,11 @@ export class MockBrain implements Brain {
 
     const claim = leaderOf(activeSeerClaims(view), this.rng, others);
 
+    if (view.self.role === "jester") {
+      const ps = primeSuspect(view, this.rng);
+      return { targetId: ps ?? pick(this.rng, others) };
+    }
+
     if (view.self.alignment === "evil") {
       // Never reinforce a mob that has (correctly) turned on the pack; steer it
       // onto a villager instead.
@@ -301,5 +351,69 @@ export class MockBrain implements Brain {
       if (ps !== null) return { targetId: ps };
     }
     return { targetId: null };
+  }
+
+  async wolfChat(view: PlayerView, round: number): Promise<string> {
+    const target = this.wolfPick(view);
+    if (target === null) return "";
+    const pool = round === 1 ? WOLF_CHAT_PROPOSE : WOLF_CHAT_AGREE;
+    return fillTarget(pick(this.rng, pool), nameOf(view, target));
+  }
+
+  async accuse(view: PlayerView): Promise<AccuseDecision> {
+    const others = aliveOthers(view);
+    if (others.length === 0) return { targetId: null };
+    if (view.self.role === "jester") {
+      // Draw a little fire without being obvious.
+      if (this.rng() < 0.4) return { targetId: null };
+      const target = pick(this.rng, others);
+      return { targetId: target, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, target)) };
+    }
+    if (view.self.alignment === "evil") {
+      const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
+      const pool = nonWolves.length ? nonWolves : others;
+      const target =
+        leaderOf(buddySuspicion(view), this.rng, pool) ??
+        primeSuspect(view, this.rng, view.knownWolves) ??
+        pick(this.rng, pool);
+      return { targetId: target, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, target)) };
+    }
+    if (view.self.role === "seer") {
+      const wolf = knownLiveWolfForSeer(view);
+      if (wolf !== null)
+        return { targetId: wolf, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, wolf)) };
+    }
+    const suspect =
+      leaderOf(activeSeerClaims(view), this.rng, others) ?? leaderOf(buddySuspicion(view), this.rng, others);
+    if (suspect === null || this.rng() > 0.35 + 0.5 * this.style.aggression) return { targetId: null };
+    return { targetId: suspect, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, suspect)) };
+  }
+
+  async defend(view: PlayerView): Promise<string> {
+    return render(view, "defend", null, this.rng);
+  }
+
+  async witchAction(view: PlayerView, wolfTargetId: number | null): Promise<WitchDecision> {
+    const claimants = seerClaimants(view);
+    if (
+      view.potions?.heal &&
+      wolfTargetId !== null &&
+      (wolfTargetId === view.self.id || claimants.includes(wolfTargetId))
+    ) {
+      return { heal: true, poisonTargetId: null };
+    }
+    if (view.potions?.poison) {
+      const confirmed = leaderOf(activeSeerClaims(view), this.rng, aliveOthers(view));
+      if (confirmed !== null) return { heal: false, poisonTargetId: confirmed };
+    }
+    return { heal: false, poisonTargetId: null };
+  }
+
+  async hunterShot(view: PlayerView): Promise<{ targetId: number | null }> {
+    const others = view.aliveIds.filter((id) => id !== view.self.id);
+    if (others.length === 0) return { targetId: null };
+    const confirmed = leaderOf(activeSeerClaims(view), this.rng, others);
+    const target = confirmed ?? primeSuspect(view, this.rng) ?? pick(this.rng, others);
+    return { targetId: target };
   }
 }

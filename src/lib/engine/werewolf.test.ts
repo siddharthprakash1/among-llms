@@ -100,6 +100,31 @@ describe("full games", () => {
       }
     }
   });
+
+  it("mock games at 9+ players produce wolf chat, accusations, and defenses", async () => {
+    let chats = 0, accusations = 0, defenses = 0;
+    for (const seed of [3, 11, 29]) {
+      const t = await mockGame(9, seed);
+      chats += t.events.filter((e) => e.kind === "wolf_chat").length;
+      accusations += t.events.filter((e) => e.kind === "accusation").length;
+      defenses += t.events.filter((e) => e.kind === "defense").length;
+    }
+    expect(chats).toBeGreaterThan(0);
+    expect(accusations).toBeGreaterThan(0);
+    expect(defenses).toBeGreaterThan(0);
+  });
+
+  it("witch and hunter mock heuristics only ever act legally", async () => {
+    for (let seed = 100; seed < 120; seed++) {
+      const t = await mockGame(10, seed);
+      const witchActs = t.events.filter((e) => e.kind === "witch_action");
+      expect(witchActs.filter((e) => e.action === "heal").length).toBeLessThanOrEqual(1);
+      expect(witchActs.filter((e) => e.action === "poison").length).toBeLessThanOrEqual(1);
+      for (const e of t.events) {
+        if (e.kind === "hunter_shot") expect(e.hunterId).not.toBe(e.targetId);
+      }
+    }
+  });
 });
 
 describe("three-beat day + wolf chat", () => {
@@ -118,6 +143,7 @@ describe("three-beat day + wolf chat", () => {
     const t9 = await mockGame(9, 7); // 2 wolves
     const wolfIds = new Set(t9.players.filter((p) => p.role === "werewolf").map((p) => p.id));
     const chats = t9.events.filter((e) => e.kind === "wolf_chat");
+    expect(chats.length).toBeGreaterThan(0);
     for (const c of chats) expect(wolfIds.has(c.wolfId)).toBe(true);
 
     const t5 = await mockGame(5, 7); // 1 wolf → no chat
