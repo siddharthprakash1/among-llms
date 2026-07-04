@@ -13,6 +13,12 @@ export interface SplitStats {
   wins: number;
 }
 
+export interface EloHistoryEntry {
+  gameId: string;
+  delta: number;
+  elo: number;
+}
+
 export interface ModelRating {
   model: string;
   elo: number;
@@ -20,6 +26,8 @@ export interface ModelRating {
   wins: number;
   asWolf: SplitStats;
   asVillage: SplitStats;
+  asJester: SplitStats;
+  history: EloHistoryEntry[];
 }
 
 export type Leaderboard = Record<string, ModelRating>;
@@ -32,13 +40,21 @@ export function emptyRating(model: string): ModelRating {
     wins: 0,
     asWolf: { games: 0, wins: 0 },
     asVillage: { games: 0, wins: 0 },
+    asJester: { games: 0, wins: 0 },
+    history: [],
   };
 }
 
 function clone(board: Leaderboard): Leaderboard {
   const next: Leaderboard = {};
   for (const [k, v] of Object.entries(board)) {
-    next[k] = { ...v, asWolf: { ...v.asWolf }, asVillage: { ...v.asVillage } };
+    next[k] = {
+      ...v,
+      asWolf: { ...v.asWolf },
+      asVillage: { ...v.asVillage },
+      asJester: { ...(v.asJester ?? { games: 0, wins: 0 }) },
+      history: [...(v.history ?? [])],
+    };
   }
   return next;
 }
@@ -54,10 +70,18 @@ function average(seats: SeatOutcome[], pre: Map<string, number>): number {
 }
 
 /** Returns a new leaderboard with one game's results folded in. */
-export function applyGame(board: Leaderboard, outcomes: SeatOutcome[]): Leaderboard {
+export function applyGame(board: Leaderboard, outcomes: SeatOutcome[], gameId: string): Leaderboard {
   const next = clone(board);
   const ensure = (m: string): ModelRating => {
-    if (!next[m]) next[m] = emptyRating(m);
+    const base = emptyRating(m);
+    next[m] = {
+      ...base,
+      ...(next[m] ?? {}),
+      asWolf: { ...base.asWolf, ...next[m]?.asWolf },
+      asVillage: { ...base.asVillage, ...next[m]?.asVillage },
+      asJester: { ...base.asJester, ...(next[m] as Partial<ModelRating> | undefined)?.asJester },
+      history: next[m]?.history ?? [],
+    };
     return next[m];
   };
 
@@ -67,13 +91,17 @@ export function applyGame(board: Leaderboard, outcomes: SeatOutcome[]): Leaderbo
   const pre = new Map<string, number>();
   for (const m of Object.keys(next)) pre.set(m, next[m].elo);
 
-  const winners = outcomes.filter((o) => o.won);
-  const losers = outcomes.filter((o) => !o.won);
+  // Determine rated subset: if jester won, rate all; otherwise exclude neutral seats.
+  const jesterWon = outcomes.some((o) => o.alignment === "neutral" && o.won);
+  const rated = jesterWon ? outcomes : outcomes.filter((o) => o.alignment !== "neutral");
+
+  const winners = rated.filter((o) => o.won);
+  const losers = rated.filter((o) => !o.won);
   const winnersAvg = average(winners, pre);
   const losersAvg = average(losers, pre);
 
   const delta = new Map<string, number>();
-  for (const o of outcomes) {
+  for (const o of rated) {
     const oppAvg = o.won ? losersAvg : winnersAvg;
     const exp = expected(pre.get(o.model) ?? DEFAULT_ELO, oppAvg);
     const score = o.won ? 1 : 0;
@@ -88,6 +116,9 @@ export function applyGame(board: Leaderboard, outcomes: SeatOutcome[]): Leaderbo
     if (o.alignment === "evil") {
       r.asWolf.games += 1;
       if (o.won) r.asWolf.wins += 1;
+    } else if (o.alignment === "neutral") {
+      r.asJester.games += 1;
+      if (o.won) r.asJester.wins += 1;
     } else {
       r.asVillage.games += 1;
       if (o.won) r.asVillage.wins += 1;
@@ -96,7 +127,10 @@ export function applyGame(board: Leaderboard, outcomes: SeatOutcome[]): Leaderbo
 
   // Apply rating deltas off the snapshot.
   for (const [m, d] of delta) {
-    ensure(m).elo = Math.round((pre.get(m) ?? DEFAULT_ELO) + d);
+    const r = ensure(m);
+    const before = pre.get(m) ?? DEFAULT_ELO;
+    r.elo = Math.round(before + d);
+    r.history = [...r.history, { gameId, delta: r.elo - before, elo: r.elo }];
   }
 
   return next;

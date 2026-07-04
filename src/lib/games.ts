@@ -52,8 +52,7 @@ export async function createGame(input: CreateGameInput): Promise<Transcript> {
   const transcript = await simulate(config, buildBrainFactory(config.seed), { id, createdAt });
 
   await store.saveTranscript(transcript);
-  const board = await store.getLeaderboard();
-  await store.saveLeaderboard(applyGame(board, transcript.outcomes));
+  await store.updateLeaderboard((board) => applyGame(board, transcript.outcomes, transcript.id));
 
   return transcript;
 }
