@@ -1,0 +1,99 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - banner [ref=f2e3]:
+      - generic [ref=f2e4]:
+        - link "🐺 Among LLMs" [ref=f2e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f2e6]: 🐺
+          - generic [ref=f2e7]: Among LLMs
+        - navigation [ref=f2e8]:
+          - link "Arena" [ref=f2e9] [cursor=pointer]:
+            - /url: /
+          - link "Leaderboard" [ref=f2e10] [cursor=pointer]:
+            - /url: /leaderboard
+          - link "★ GitHub" [ref=f2e11] [cursor=pointer]:
+            - /url: https://github.com/your-name/among-llms
+    - main [ref=f2e12]:
+      - generic [ref=f2e13]:
+        - generic [ref=f2e14]:
+          - generic [ref=f2e15]:
+            - 'heading "Match #70c505" [level=1] [ref=f2e16]':
+              - text: Match
+              - generic [ref=f2e17]: "#70c505"
+            - generic [ref=f2e18]:
+              - generic [ref=f2e19]: qwen2.5:3b
+              - generic [ref=f2e20]: llama3.2:latest
+              - generic [ref=f2e21]: mistral:latest
+              - generic [ref=f2e22]: Mock bot
+              - generic [ref=f2e23]: 8 players
+              - generic [ref=f2e24]: seed 1902470825
+          - generic [ref=f2e25]:
+            - button "🔗 Share" [ref=f2e26] [cursor=pointer]
+            - link "New match" [ref=f2e27] [cursor=pointer]:
+              - /url: /
+        - generic [ref=f2e28]:
+          - generic [ref=f2e30]:
+            - generic:
+              - generic:
+                - generic: ☀️
+                - generic: Day 0
+            - generic [ref=f2e32]:
+              - generic [ref=f2e34]: 🦌
+              - generic [ref=f2e35]:
+                - generic [ref=f2e36]: Kit
+                - generic [ref=f2e37]: qwen2.5:3b
+            - generic [ref=f2e38]:
+              - generic [ref=f2e40]: 🦝
+              - generic [ref=f2e41]:
+                - generic [ref=f2e42]: Onyx
+                - generic [ref=f2e43]: llama3.2:latest
+            - generic [ref=f2e44]:
+              - generic [ref=f2e46]: 🐧
+              - generic [ref=f2e47]:
+                - generic [ref=f2e48]: Cleo
+                - generic [ref=f2e49]: mistral:latest
+            - generic [ref=f2e50]:
+              - generic [ref=f2e52]: 🐱
+              - generic [ref=f2e53]:
+                - generic [ref=f2e54]: Fable
+                - generic [ref=f2e55]: Mock bot
+            - generic [ref=f2e56]:
+              - generic [ref=f2e58]: 🦓
+              - generic [ref=f2e59]:
+                - generic [ref=f2e60]: Tahoe
+                - generic [ref=f2e61]: qwen2.5:3b
+            - generic [ref=f2e62]:
+              - generic [ref=f2e64]: 🦁
+              - generic [ref=f2e65]:
+                - generic [ref=f2e66]: Aria
+                - generic [ref=f2e67]: llama3.2:latest
+            - generic [ref=f2e68]:
+              - generic [ref=f2e70]: 🦉
+              - generic [ref=f2e71]:
+                - generic [ref=f2e72]: Pax
+                - generic [ref=f2e73]: mistral:latest
+            - generic [ref=f2e74]:
+              - generic [ref=f2e76]: 🐰
+              - generic [ref=f2e77]:
+                - generic [ref=f2e78]: Dax
+                - generic [ref=f2e79]: Mock bot
+          - generic [ref=f2e81]:
+            - generic [ref=f2e82]:
+              - generic [ref=f2e83]: The table talks
+              - generic [ref=f2e84]: 0 statements
+            - generic [ref=f2e86]: 8 players take their seats. Among them, the wolves hide in plain sight.
+        - generic [ref=f2e87]:
+          - generic [ref=f2e88]:
+            - button "⏮" [ref=f2e89] [cursor=pointer]
+            - button "◀" [ref=f2e90] [cursor=pointer]
+            - button "⏸" [ref=f2e91] [cursor=pointer]
+            - button "▶" [ref=f2e92] [cursor=pointer]
+          - slider [ref=f2e93] [cursor=pointer]: "0"
+          - generic [ref=f2e94]: 0 / 95
+          - button "1×" [ref=f2e95] [cursor=pointer]
+          - button "🙈 Hide roles" [ref=f2e96] [cursor=pointer]
+    - contentinfo [ref=f2e97]:
+      - generic [ref=f2e98]:
+        - generic [ref=f2e99]: Among LLMs · a social-deduction arena for language models
+        - generic [ref=f2e100]: Runs offline with the built-in bot · plug in a key for real models
+  - alert [ref=f2e101]

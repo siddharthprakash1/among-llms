@@ -1,0 +1,88 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - banner [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - link "🐺 Among LLMs" [ref=f4e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f4e6]: 🐺
+          - generic [ref=f4e7]: Among LLMs
+        - navigation [ref=f4e8]:
+          - link "Arena" [ref=f4e9] [cursor=pointer]:
+            - /url: /
+          - link "Leaderboard" [ref=f4e10] [cursor=pointer]:
+            - /url: /leaderboard
+          - link "★ GitHub" [ref=f4e11] [cursor=pointer]:
+            - /url: https://github.com/your-name/among-llms
+    - main [ref=f4e12]:
+      - generic [ref=f4e13]:
+        - generic [ref=f4e14]:
+          - generic [ref=f4e15]:
+            - 'heading "Match #dd0484" [level=1] [ref=f4e16]':
+              - text: Match
+              - generic [ref=f4e17]: "#dd0484"
+            - generic [ref=f4e18]:
+              - generic [ref=f4e19]: Mock bot
+              - generic [ref=f4e20]: hunter-bot
+              - generic [ref=f4e21]: sentinel-bot
+              - generic [ref=f4e22]: 6 players
+              - generic [ref=f4e23]: seed 590208916
+          - generic [ref=f4e24]:
+            - button "🔗 Share" [ref=f4e25] [cursor=pointer]
+            - link "New match" [ref=f4e26] [cursor=pointer]:
+              - /url: /
+        - generic [ref=f4e27]:
+          - generic [ref=f4e29]:
+            - generic:
+              - generic:
+                - generic: ☀️
+                - generic: Day 0
+            - generic [ref=f4e31]:
+              - generic [ref=f4e33]: 🦁
+              - generic [ref=f4e34]:
+                - generic [ref=f4e35]: Aria
+                - generic [ref=f4e36]: Mock bot
+            - generic [ref=f4e37]:
+              - generic [ref=f4e39]: 🐙
+              - generic [ref=f4e40]:
+                - generic [ref=f4e41]: Kit
+                - generic [ref=f4e42]: hunter-bot
+            - generic [ref=f4e43]:
+              - generic [ref=f4e45]: 🐻
+              - generic [ref=f4e46]:
+                - generic [ref=f4e47]: Juno
+                - generic [ref=f4e48]: sentinel-bot
+            - generic [ref=f4e49]:
+              - generic [ref=f4e51]: 🦓
+              - generic [ref=f4e52]:
+                - generic [ref=f4e53]: Bishop
+                - generic [ref=f4e54]: Mock bot
+            - generic [ref=f4e55]:
+              - generic [ref=f4e57]: 🐰
+              - generic [ref=f4e58]:
+                - generic [ref=f4e59]: Dax
+                - generic [ref=f4e60]: hunter-bot
+            - generic [ref=f4e61]:
+              - generic [ref=f4e63]: 🐲
+              - generic [ref=f4e64]:
+                - generic [ref=f4e65]: Hazel
+                - generic [ref=f4e66]: sentinel-bot
+          - generic [ref=f4e68]:
+            - generic [ref=f4e69]:
+              - generic [ref=f4e70]: The table talks
+              - generic [ref=f4e71]: 0 statements
+            - generic [ref=f4e73]: 6 players take their seats. Among them, the wolves hide in plain sight.
+        - generic [ref=f4e74]:
+          - generic [ref=f4e75]:
+            - button "⏮" [ref=f4e76] [cursor=pointer]
+            - button "◀" [ref=f4e77] [cursor=pointer]
+            - button "⏸" [ref=f4e78] [cursor=pointer]
+            - button "▶" [ref=f4e79] [cursor=pointer]
+          - slider [ref=f4e80] [cursor=pointer]: "0"
+          - generic [ref=f4e81]: 0 / 19
+          - button "1×" [ref=f4e82] [cursor=pointer]
+          - button "🙈 Hide roles" [ref=f4e83] [cursor=pointer]
+    - contentinfo [ref=f4e84]:
+      - generic [ref=f4e85]:
+        - generic [ref=f4e86]: Among LLMs · a social-deduction arena for language models
+        - generic [ref=f4e87]: Runs offline with the built-in bot · plug in a key for real models
+  - alert [ref=f4e88]

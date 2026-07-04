@@ -1,0 +1,18 @@
+/node_modules
+/.next
+/out
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# local data (replays + leaderboard)
+/data/games
+/data/leaderboard.json
+
+.env
+.env.local
+.DS_Store
+npm-debug.log*
+
+# session memory (private)
+/.remember

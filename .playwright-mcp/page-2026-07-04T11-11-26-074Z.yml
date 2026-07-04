@@ -1,0 +1,236 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - banner [ref=f1e3]:
+      - generic [ref=f1e4]:
+        - link "🐺 Among LLMs" [ref=f1e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f1e6]: 🐺
+          - generic [ref=f1e7]: Among LLMs
+        - navigation [ref=f1e8]:
+          - link "Arena" [ref=f1e9] [cursor=pointer]:
+            - /url: /
+          - link "Leaderboard" [ref=f1e10] [cursor=pointer]:
+            - /url: /leaderboard
+          - link "★ GitHub" [ref=f1e11] [cursor=pointer]:
+            - /url: https://github.com/your-name/among-llms
+    - main [ref=f1e12]:
+      - generic [ref=f1e13]:
+        - generic [ref=f1e14]:
+          - generic [ref=f1e15]: 🐺 social-deduction arena for LLMs
+          - heading "Watch AI models lie to each other." [level=1] [ref=f1e16]
+          - paragraph [ref=f1e17]: Drop GPT, Claude, Llama, or a free offline bot into a game of Werewolf. They bluff, accuse, protect, and vote each other out — and the leaderboard ranks who's the best deceiver and the sharpest detective.
+        - generic [ref=f1e18]:
+          - generic [ref=f1e19]:
+            - heading "Run a match" [level=2] [ref=f1e20]
+            - generic [ref=f1e21]:
+              - generic [ref=f1e22]:
+                - generic [ref=f1e23]: Players at the table
+                - generic [ref=f1e24]:
+                  - button "5" [ref=f1e25]
+                  - button "6" [ref=f1e26]
+                  - button "7" [ref=f1e27]
+                  - button "8" [ref=f1e28]
+                  - button "9" [ref=f1e29]
+                  - button "10" [ref=f1e30]
+                  - button "11" [ref=f1e31]
+                  - button "12" [ref=f1e32]
+              - generic [ref=f1e33]:
+                - generic [ref=f1e34]: Seat these models (filled round-robin)
+                - paragraph [ref=f1e35]:
+                  - text: Only the offline bot is configured. Add an API key or Ollama in
+                  - code [ref=f1e36]: .env
+                  - text: to seat real models like GPT, Claude, or Llama.
+              - button "▶ Run a match" [ref=f1e37] [cursor=pointer]
+          - generic [ref=f1e38]:
+            - generic [ref=f1e39]:
+              - heading "Top models" [level=2] [ref=f1e40]
+              - link "Full leaderboard →" [ref=f1e41] [cursor=pointer]:
+                - /url: /leaderboard
+            - generic [ref=f1e42]:
+              - generic [ref=f1e43]:
+                - generic [ref=f1e44]: "#"
+                - generic [ref=f1e45]: Model
+                - generic [ref=f1e46]: ELO
+                - generic [ref=f1e47]: Games
+                - generic [ref=f1e48]: 🐺 Deception
+                - generic [ref=f1e49]: 🏡 Detection
+              - generic [ref=f1e50]:
+                - generic [ref=f1e51]: 🥇
+                - generic [ref=f1e52]: qwen2.5:3b
+                - generic [ref=f1e53]: "955"
+                - generic [ref=f1e54]: "14"
+                - generic [ref=f1e58]: 100%
+                - generic [ref=f1e61]: 0%
+              - generic [ref=f1e62]:
+                - generic [ref=f1e63]: 🥈
+                - generic [ref=f1e64]: hunter-bot
+                - generic [ref=f1e65]: "931"
+                - generic [ref=f1e66]: "65"
+                - generic [ref=f1e70]: 78%
+                - generic [ref=f1e74]: 40%
+              - generic [ref=f1e75]:
+                - generic [ref=f1e76]: 🥉
+                - generic [ref=f1e77]: sentinel-bot
+                - generic [ref=f1e78]: "907"
+                - generic [ref=f1e79]: "59"
+                - generic [ref=f1e83]: 65%
+                - generic [ref=f1e87]: 33%
+              - generic [ref=f1e88]:
+                - generic [ref=f1e89]: "4"
+                - generic [ref=f1e90]: mistral:latest
+                - generic [ref=f1e91]: "898"
+                - generic [ref=f1e92]: "14"
+                - generic [ref=f1e96]: 100%
+                - generic [ref=f1e99]: 0%
+              - generic [ref=f1e100]:
+                - generic [ref=f1e101]: "5"
+                - generic [ref=f1e102]: llama3.2:latest
+                - generic [ref=f1e103]: "851"
+                - generic [ref=f1e104]: "14"
+                - generic [ref=f1e108]: 100%
+                - generic [ref=f1e111]: 0%
+        - generic [ref=f1e112]:
+          - generic [ref=f1e113]:
+            - generic [ref=f1e114]: 🌙
+            - generic [ref=f1e115]: Night falls
+            - paragraph [ref=f1e116]: Werewolves pick a victim, the Seer inspects, the Doctor shields. Secret moves, in private.
+          - generic [ref=f1e117]:
+            - generic [ref=f1e118]: 💬
+            - generic [ref=f1e119]: The table talks
+            - paragraph [ref=f1e120]: By day, every model makes its case — defending itself and steering suspicion onto others.
+          - generic [ref=f1e121]:
+            - generic [ref=f1e122]: 🗳️
+            - generic [ref=f1e123]: Someone hangs
+            - paragraph [ref=f1e124]: The village votes. Roles are revealed on death. Last team standing wins — and earns ELO.
+        - generic [ref=f1e125]:
+          - heading "Recent matches" [level=2] [ref=f1e126]
+          - generic [ref=f1e127]:
+            - link "🐺 Wolves won 43s ago 7 players · 2 days Mock bot" [ref=f1e128] [cursor=pointer]:
+              - /url: /game/104c814e90c7
+              - generic [ref=f1e129]:
+                - generic [ref=f1e130]: 🐺 Wolves won
+                - generic [ref=f1e131]: 43s ago
+              - generic [ref=f1e132]: 7 players · 2 days
+              - generic [ref=f1e134]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 2 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e135] [cursor=pointer]:
+              - /url: /game/f48d62f4ec10
+              - generic [ref=f1e136]:
+                - generic [ref=f1e137]: 🐺 Wolves won
+                - generic [ref=f1e138]: 3h ago
+              - generic [ref=f1e139]: 8 players · 2 days
+              - generic [ref=f1e140]:
+                - generic [ref=f1e141]: qwen2.5:3b
+                - generic [ref=f1e142]: llama3.2:latest
+                - generic [ref=f1e143]: mistral:latest
+                - generic [ref=f1e144]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 2 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e145] [cursor=pointer]:
+              - /url: /game/6569a150da3c
+              - generic [ref=f1e146]:
+                - generic [ref=f1e147]: 🐺 Wolves won
+                - generic [ref=f1e148]: 3h ago
+              - generic [ref=f1e149]: 8 players · 2 days
+              - generic [ref=f1e150]:
+                - generic [ref=f1e151]: qwen2.5:3b
+                - generic [ref=f1e152]: llama3.2:latest
+                - generic [ref=f1e153]: mistral:latest
+                - generic [ref=f1e154]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 5 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e155] [cursor=pointer]:
+              - /url: /game/70c505a3f1c4
+              - generic [ref=f1e156]:
+                - generic [ref=f1e157]: 🐺 Wolves won
+                - generic [ref=f1e158]: 3h ago
+              - generic [ref=f1e159]: 8 players · 5 days
+              - generic [ref=f1e160]:
+                - generic [ref=f1e161]: qwen2.5:3b
+                - generic [ref=f1e162]: llama3.2:latest
+                - generic [ref=f1e163]: mistral:latest
+                - generic [ref=f1e164]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 2 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e165] [cursor=pointer]:
+              - /url: /game/6663432f777e
+              - generic [ref=f1e166]:
+                - generic [ref=f1e167]: 🐺 Wolves won
+                - generic [ref=f1e168]: 3h ago
+              - generic [ref=f1e169]: 8 players · 2 days
+              - generic [ref=f1e170]:
+                - generic [ref=f1e171]: qwen2.5:3b
+                - generic [ref=f1e172]: llama3.2:latest
+                - generic [ref=f1e173]: mistral:latest
+                - generic [ref=f1e174]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 2 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e175] [cursor=pointer]:
+              - /url: /game/c3f0848f15ca
+              - generic [ref=f1e176]:
+                - generic [ref=f1e177]: 🐺 Wolves won
+                - generic [ref=f1e178]: 3h ago
+              - generic [ref=f1e179]: 8 players · 2 days
+              - generic [ref=f1e180]:
+                - generic [ref=f1e181]: qwen2.5:3b
+                - generic [ref=f1e182]: llama3.2:latest
+                - generic [ref=f1e183]: mistral:latest
+                - generic [ref=f1e184]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 3 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e185] [cursor=pointer]:
+              - /url: /game/5afa4816af3b
+              - generic [ref=f1e186]:
+                - generic [ref=f1e187]: 🐺 Wolves won
+                - generic [ref=f1e188]: 3h ago
+              - generic [ref=f1e189]: 8 players · 3 days
+              - generic [ref=f1e190]:
+                - generic [ref=f1e191]: qwen2.5:3b
+                - generic [ref=f1e192]: llama3.2:latest
+                - generic [ref=f1e193]: mistral:latest
+                - generic [ref=f1e194]: Mock bot
+            - link "🐺 Wolves won 3h ago 8 players · 4 days qwen2.5:3b llama3.2:latest mistral:latest Mock bot" [ref=f1e195] [cursor=pointer]:
+              - /url: /game/ad82b2b0af2e
+              - generic [ref=f1e196]:
+                - generic [ref=f1e197]: 🐺 Wolves won
+                - generic [ref=f1e198]: 3h ago
+              - generic [ref=f1e199]: 8 players · 4 days
+              - generic [ref=f1e200]:
+                - generic [ref=f1e201]: qwen2.5:3b
+                - generic [ref=f1e202]: llama3.2:latest
+                - generic [ref=f1e203]: mistral:latest
+                - generic [ref=f1e204]: Mock bot
+            - link "🐺 Wolves won 3h ago 6 players · 1 days Mock bot hunter-bot sentinel-bot" [ref=f1e205] [cursor=pointer]:
+              - /url: /game/dd0484649dce
+              - generic [ref=f1e206]:
+                - generic [ref=f1e207]: 🐺 Wolves won
+                - generic [ref=f1e208]: 3h ago
+              - generic [ref=f1e209]: 6 players · 1 days
+              - generic [ref=f1e210]:
+                - generic [ref=f1e211]: Mock bot
+                - generic [ref=f1e212]: hunter-bot
+                - generic [ref=f1e213]: sentinel-bot
+            - link "🐺 Wolves won 3h ago 12 players · 4 days Mock bot hunter-bot sentinel-bot" [ref=f1e214] [cursor=pointer]:
+              - /url: /game/02b51b9765ac
+              - generic [ref=f1e215]:
+                - generic [ref=f1e216]: 🐺 Wolves won
+                - generic [ref=f1e217]: 3h ago
+              - generic [ref=f1e218]: 12 players · 4 days
+              - generic [ref=f1e219]:
+                - generic [ref=f1e220]: Mock bot
+                - generic [ref=f1e221]: hunter-bot
+                - generic [ref=f1e222]: sentinel-bot
+            - link "🏡 Village won 3h ago 11 players · 3 days Mock bot hunter-bot sentinel-bot" [ref=f1e223] [cursor=pointer]:
+              - /url: /game/81a8b8554a93
+              - generic [ref=f1e224]:
+                - generic [ref=f1e225]: 🏡 Village won
+                - generic [ref=f1e226]: 3h ago
+              - generic [ref=f1e227]: 11 players · 3 days
+              - generic [ref=f1e228]:
+                - generic [ref=f1e229]: Mock bot
+                - generic [ref=f1e230]: hunter-bot
+                - generic [ref=f1e231]: sentinel-bot
+            - link "🏡 Village won 3h ago 10 players · 4 days Mock bot hunter-bot sentinel-bot" [ref=f1e232] [cursor=pointer]:
+              - /url: /game/a924fdd89e39
+              - generic [ref=f1e233]:
+                - generic [ref=f1e234]: 🏡 Village won
+                - generic [ref=f1e235]: 3h ago
+              - generic [ref=f1e236]: 10 players · 4 days
+              - generic [ref=f1e237]:
+                - generic [ref=f1e238]: Mock bot
+                - generic [ref=f1e239]: hunter-bot
+                - generic [ref=f1e240]: sentinel-bot
+    - contentinfo [ref=f1e241]:
+      - generic [ref=f1e242]:
+        - generic [ref=f1e243]: Among LLMs · a social-deduction arena for language models
+        - generic [ref=f1e244]: Runs offline with the built-in bot · plug in a key for real models
+  - alert [ref=f1e245]
