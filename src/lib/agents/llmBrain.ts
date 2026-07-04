@@ -3,16 +3,31 @@
 // on any network/parse error it transparently falls back to the deterministic
 // mock heuristic, so a flaky or slow model can never crash a game.
 
-import { Brain, NightDecision, PlayerView, VoteDecision } from "../engine/types";
+import {
+  AccuseDecision,
+  AccusationRecord,
+  Brain,
+  NightDecision,
+  PlayerView,
+  VoteDecision,
+  WitchDecision,
+} from "../engine/types";
 import { MockBrain } from "./mockBrain";
 import { ProviderConfig } from "./registry";
 import {
   SYSTEM_PROMPT,
+  accusePrompt,
+  defendPrompt,
+  hunterPrompt,
   nightPrompt,
   parseStatementResponse,
   parseTargetResponse,
+  parseTextResponse,
+  parseWitchResponse,
   statementPrompt,
   votePrompt,
+  witchPrompt,
+  wolfChatPrompt,
 } from "./prompts";
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -118,6 +133,54 @@ export class LlmBrain implements Brain {
       return { targetId: target };
     } catch {
       return this.fallback.dayVote(view);
+    }
+  }
+
+  async wolfChat(view: PlayerView, round: number): Promise<string> {
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, wolfChatPrompt(view, round));
+      return parseTextResponse(text, ["message", "statement"]) ?? this.fallback.wolfChat(view, round);
+    } catch {
+      return this.fallback.wolfChat(view, round);
+    }
+  }
+
+  async accuse(view: PlayerView): Promise<AccuseDecision> {
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, accusePrompt(view));
+      const obj = { targetId: parseTargetResponse(text, view), text: parseTextResponse(text, ["reason"]) ?? undefined };
+      return obj;
+    } catch {
+      return this.fallback.accuse(view);
+    }
+  }
+
+  async defend(view: PlayerView, against: AccusationRecord[]): Promise<string> {
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, defendPrompt(view, against));
+      return parseTextResponse(text, ["statement"]) ?? this.fallback.defend(view);
+    } catch {
+      return this.fallback.defend(view);
+    }
+  }
+
+  async witchAction(view: PlayerView, wolfTargetId: number | null): Promise<WitchDecision> {
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, witchPrompt(view, wolfTargetId));
+      return parseWitchResponse(text, view) ?? this.fallback.witchAction(view, wolfTargetId);
+    } catch {
+      return this.fallback.witchAction(view, wolfTargetId);
+    }
+  }
+
+  async hunterShot(view: PlayerView): Promise<{ targetId: number | null }> {
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, hunterPrompt(view));
+      const target = parseTargetResponse(text, view);
+      if (target === null) return this.fallback.hunterShot(view);
+      return { targetId: target };
+    } catch {
+      return this.fallback.hunterShot(view);
     }
   }
 }
