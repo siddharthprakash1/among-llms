@@ -1,24 +1,50 @@
 // Role-count derivation and seat assignment.
 
-import { ALIGNMENT_OF, GameConfig, Player, Role } from "./types";
+import { ALIGNMENT_OF, GameConfig, Player, Role, ToggleableRole } from "./types";
 import { assignIdentities } from "./names";
 import { Rng, shuffle } from "./rng";
 
 export const MIN_PLAYERS = 5;
 export const MAX_PLAYERS = 12;
 
-/** Default role distribution for a table of `n` players. */
-export function defaultRoleCounts(n: number): Record<Role, number> {
+const WOLVES_BY_SIZE: Record<number, number> = { 5: 1, 6: 1, 7: 2, 8: 2, 9: 2, 10: 3, 11: 3, 12: 4 };
+
+const SPECIALS_BY_SIZE: Record<number, Role[]> = {
+  5: ["seer", "doctor"],
+  6: ["seer", "doctor", "hunter"],
+  7: ["seer", "doctor", "hunter"],
+  8: ["seer", "doctor", "hunter", "witch"],
+  9: ["seer", "doctor", "hunter", "witch", "jester"],
+  10: ["seer", "doctor", "hunter", "witch", "jester"],
+  11: ["seer", "doctor", "hunter", "witch", "jester"],
+  12: ["seer", "doctor", "hunter", "witch", "jester"],
+};
+
+/** Default role distribution for a table of `n` players (spec §3.8). */
+export function defaultRoleCounts(n: number, disabled: ToggleableRole[] = []): Record<Role, number> {
   const clamped = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, n));
-  const werewolves = Math.max(1, Math.round(clamped / 4));
-  const seer = 1;
-  const doctor = 1;
-  const villager = Math.max(0, clamped - werewolves - seer - doctor);
-  return { werewolf: werewolves, seer, doctor, villager };
+  const counts: Record<Role, number> = {
+    werewolf: WOLVES_BY_SIZE[clamped],
+    seer: 0,
+    doctor: 0,
+    hunter: 0,
+    witch: 0,
+    jester: 0,
+    villager: 0,
+  };
+  for (const role of SPECIALS_BY_SIZE[clamped]) {
+    if ((disabled as Role[]).includes(role)) continue;
+    counts[role] += 1;
+  }
+  const nonVillager = (Object.keys(counts) as Role[])
+    .filter((r) => r !== "villager")
+    .reduce((acc, r) => acc + counts[r], 0);
+  counts.villager = Math.max(0, clamped - nonVillager);
+  return counts;
 }
 
 export function resolveRoleCounts(config: GameConfig): Record<Role, number> {
-  const base = defaultRoleCounts(config.numPlayers);
+  const base = defaultRoleCounts(config.numPlayers, config.disabledRoles ?? []);
   if (!config.roleCounts) return base;
   const merged: Record<Role, number> = { ...base, ...config.roleCounts } as Record<Role, number>;
   return merged;
