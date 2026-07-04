@@ -3,7 +3,7 @@
 // (markdown fences, prose around JSON) and the caller falls back to heuristics
 // if parsing fails entirely.
 
-import { PlayerView, Role } from "../engine/types";
+import { PlayerView, Role, WitchDecision } from "../engine/types";
 
 const ROLE_BRIEF: Record<Role, string> = {
   werewolf:
@@ -14,6 +14,12 @@ const ROLE_BRIEF: Record<Role, string> = {
     "You are the DOCTOR. Each night you protect one player (possibly yourself) from the wolves. Stay hidden so the wolves don't target you.",
   villager:
     "You are a VILLAGER. You have no special power — only your reasoning and the discussion. Find the wolves and vote them out.",
+  hunter:
+    "You are the HUNTER. You have no night action, but the moment you die — night kill or day vote — you immediately shoot one player, who dies too. Choose your revenge wisely.",
+  witch:
+    "You are the WITCH. You hold two single-use potions: a HEAL (each night you learn who the wolves attacked and may save them) and a POISON (kill any player at night). At most one potion per night. Spend them at the perfect moment.",
+  jester:
+    "You are the JESTER. You win ALONE if the village votes you out during the day. Getting killed at night is a loss. Act just suspicious enough to attract the rope — without being so obvious the village smells the act.",
 };
 
 function nameOf(view: PlayerView, id: number): string {
@@ -54,11 +60,27 @@ function privateKnowledge(view: PlayerView): string {
 }
 
 function recentDiscussion(view: PlayerView, limit = 16): string {
-  const recent = view.statements.slice(-limit);
+  const recent = view.statements.filter((s) => s.day >= view.day - 1).slice(-limit);
   if (recent.length === 0) return "(no discussion yet)";
+  // JSON.stringify escapes quotes/newlines so a model can't break out of the
+  // quoted line and inject fake "System:" instructions into another agent's prompt.
   return recent
-    .map((s) => `  ${nameOf(view, s.playerId)}: "${s.text}"`)
+    .map((s) => `  ${nameOf(view, s.playerId)}: ${JSON.stringify(s.text)}`)
     .join("\n");
+}
+
+function recentAccusations(view: PlayerView): string {
+  const recent = view.accusations.filter((a) => a.day >= view.day - 1);
+  if (recent.length === 0) return "(none)";
+  return recent
+    .map((a) => `  D${a.day}: ${nameOf(view, a.from)} accused ${nameOf(view, a.target)} — "${a.text}"`)
+    .join("\n");
+}
+
+function recentDefenses(view: PlayerView): string {
+  const recent = view.defenses.filter((d) => d.day >= view.day - 1);
+  if (recent.length === 0) return "(none)";
+  return recent.map((d) => `  D${d.day}: ${nameOf(view, d.playerId)}: "${d.text}"`).join("\n");
 }
 
 function recentVotes(view: PlayerView): string {
@@ -88,6 +110,16 @@ export function buildContext(view: PlayerView): string {
     "",
     "Recent discussion:",
     recentDiscussion(view),
+    "",
+    "Formal accusations so far:",
+    recentAccusations(view),
+    "",
+    "Defenses so far:",
+    recentDefenses(view),
+    ...(view.wolfChat.length
+      ? ["", "Your pack's private chat:", view.wolfChat.slice(-8).map((c) => `  ${nameOf(view, c.wolfId)}: "${c.text}"`).join("\n")]
+      : []),
+    ...(view.dossier ? ["", "Behavioral dossier (public record):", view.dossier] : []),
     "",
     `Most recent votes:`,
     recentVotes(view),
@@ -144,6 +176,65 @@ export function votePrompt(view: PlayerView): string {
   ].join("\n");
 }
 
+export function wolfChatPrompt(view: PlayerView, round: number): string {
+  return [
+    buildContext(view),
+    "",
+    `It is NIGHT ${view.day}. Private werewolf pack chat, round ${round} of 2. Coordinate the kill with your packmates in ONE short sentence.`,
+    'Respond as JSON: {"message": "<your message to the pack>"}',
+  ].join("\n");
+}
+
+export function accusePrompt(view: PlayerView): string {
+  const legal = view.aliveIds.filter((id) => id !== view.self.id);
+  return [
+    buildContext(view),
+    "",
+    `It is DAY ${view.day}, formal accusation round. You may accuse ONE player (with a reason the table will hear) or pass.`,
+    `Legal seat ids: [${legal.join(", ")}]. Pass with target null.`,
+    'Respond as JSON: {"target": <seat id or null>, "reason": "<one sharp sentence>"}',
+  ].join("\n");
+}
+
+export function defendPrompt(view: PlayerView, against: { from: number; text: string }[]): string {
+  const lines = against.map((a) => `  ${nameOf(view, a.from)}: "${a.text}"`).join("\n");
+  return [
+    buildContext(view),
+    "",
+    `It is DAY ${view.day}. You stand ACCUSED:`,
+    lines,
+    "Give ONE short, convincing rebuttal (1–2 sentences).",
+    'Respond as JSON: {"statement": "<your defense>"}',
+  ].join("\n");
+}
+
+export function witchPrompt(view: PlayerView, wolfTargetId: number | null): string {
+  const legal = view.aliveIds.filter((id) => id !== view.self.id);
+  return [
+    buildContext(view),
+    "",
+    `It is NIGHT ${view.day}. ${
+      wolfTargetId !== null
+        ? `The wolves are attacking ${nameOf(view, wolfTargetId)} [${wolfTargetId}].`
+        : "The wolves attack no one tonight."
+    }`,
+    `Potions left — heal: ${view.potions?.heal ? "YES" : "spent"}, poison: ${view.potions?.poison ? "YES" : "spent"}. At most ONE potion per night.`,
+    `Legal poison targets: [${legal.join(", ")}].`,
+    'Respond as JSON: {"heal": true|false, "poison": <seat id or null>}',
+  ].join("\n");
+}
+
+export function hunterPrompt(view: PlayerView): string {
+  const legal = view.aliveIds.filter((id) => id !== view.self.id);
+  return [
+    buildContext(view),
+    "",
+    `You have just been killed. As the HUNTER you fire one final shot NOW.`,
+    `Legal targets: [${legal.join(", ")}].`,
+    'Respond as JSON: {"target": <seat id>, "reason": "<one short sentence>"}',
+  ].join("\n");
+}
+
 // --- parsing -------------------------------------------------------------
 
 function extractJson(text: string): unknown | null {
@@ -185,12 +276,26 @@ export function parseTargetResponse(text: string, view: PlayerView): number | nu
 }
 
 export function parseStatementResponse(text: string): string | null {
-  const obj = extractJson(text) as { statement?: unknown } | null;
-  if (obj && typeof obj.statement === "string" && obj.statement.trim()) {
-    return obj.statement.trim();
+  return parseTextResponse(text, ["statement"]);
+}
+
+export function parseTextResponse(text: string, keys: string[]): string | null {
+  const obj = extractJson(text) as Record<string, unknown> | null;
+  if (obj) {
+    for (const key of keys) {
+      const v = obj[key];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
   }
-  // fall back to raw text if it's short enough to be a statement
   const raw = (text ?? "").trim();
   if (raw && raw.length <= 400 && !raw.startsWith("{")) return raw;
   return null;
+}
+
+export function parseWitchResponse(text: string, view: PlayerView): WitchDecision | null {
+  const obj = extractJson(text) as { heal?: unknown; poison?: unknown } | null;
+  if (!obj) return null;
+  const heal = obj.heal === true || obj.heal === "true";
+  const poisonTargetId = obj.poison === null || obj.poison === undefined ? null : coerceTarget(obj.poison, view);
+  return { heal, poisonTargetId };
 }
