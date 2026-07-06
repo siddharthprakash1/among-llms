@@ -392,18 +392,33 @@ describe("matchWinner", () => {
     expect(matchWinner(m)).toBe("a");
   });
 
-  it("breaks a total-seat-win tie by higher share in the LAST game", () => {
+  it("breaks a genuine total tie by higher share in the LAST game (a wins last game)", () => {
     const m: KnockoutMatch = {
       key: "m0-0",
       a: "a",
       b: "b",
       games: [
-        gameRef("g0", { a: 2, b: 0 }), // a way ahead
-        gameRef("g1", { a: 0, b: 2 }), // tied 2-2 overall
-        gameRef("g2", { a: 0, b: 1 }), // last game: b has the higher share here
+        gameRef("g0", { a: 1, b: 0 }), // a: 1, b: 0
+        gameRef("g1", { a: 0, b: 2 }), // a: 1, b: 2
+        gameRef("g2", { a: 1, b: 0 }), // a: 2, b: 2 (tied), last game favors a
       ],
     };
-    // totals: a=2, b=3 -> b wins outright (not even a tie scenario)
+    // totals tied 2-2; last game a=1 > b=0 -> a wins
+    expect(matchWinner(m)).toBe("a");
+  });
+
+  it("breaks a genuine total tie by higher share in the LAST game (b wins last game)", () => {
+    const m: KnockoutMatch = {
+      key: "m0-0",
+      a: "a",
+      b: "b",
+      games: [
+        gameRef("g0", { a: 2, b: 0 }), // a: 2, b: 0
+        gameRef("g1", { a: 0, b: 1 }), // a: 2, b: 1
+        gameRef("g2", { a: 0, b: 1 }), // a: 2, b: 2 (tied), last game favors b
+      ],
+    };
+    // totals tied 2-2; last game b=1 > a=0 -> b wins
     expect(matchWinner(m)).toBe("b");
   });
 
