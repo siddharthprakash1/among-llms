@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ModelRating, winRate } from "@/lib/elo";
 import { cn, modelLabel, pct } from "@/lib/ui";
 
@@ -47,7 +48,12 @@ export default function LeaderboardTable({ models }: { models: ModelRating[] }) 
           )}
         >
           <span className="text-sm">{MEDALS[i] ?? i + 1}</span>
-          <span className="font-semibold text-sm truncate">{modelLabel(m.model)}</span>
+          <Link
+            href={`/models/${encodeURIComponent(m.model)}`}
+            className="font-semibold text-sm truncate link !text-[var(--text)] hover:!text-[var(--gold)]"
+          >
+            {modelLabel(m.model)}
+          </Link>
           <span className="text-right font-bold text-[var(--gold)] tabular-nums">{m.elo}</span>
           <span className="text-right text-sm text-[var(--muted)] tabular-nums">{m.games}</span>
           <Bar value={winRate(m.asWolf)} color="var(--evil)" />

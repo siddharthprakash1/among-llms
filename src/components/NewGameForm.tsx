@@ -46,12 +46,12 @@ export default function NewGameForm() {
     setSpecials((cur) => ({ ...cur, [role]: !cur[role] }));
   };
 
-  const run = async () => {
+  const run = async (live: boolean) => {
     setLoading(true);
     setError(null);
     try {
       const disabledRoles = Object.keys(specials).filter((r) => !specials[r]);
-      const res = await fetch("/api/games", {
+      const res = await fetch(live ? "/api/games/live" : "/api/games", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ numPlayers, seatModels: selected, disabledRoles }),
@@ -151,9 +151,14 @@ export default function NewGameForm() {
 
       {error && <div className="text-sm text-[var(--blood)]">{error}</div>}
 
-      <button className="btn btn-primary w-full py-3 text-base" onClick={run} disabled={loading}>
-        {loading ? "Dealing roles…" : "▶  Run a match"}
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button className="btn btn-primary py-3 text-base" onClick={() => run(false)} disabled={loading}>
+          {loading ? "Dealing…" : "▶ Run a match"}
+        </button>
+        <button className="btn btn-ghost py-3 text-base" onClick={() => run(true)} disabled={loading}>
+          📡 Watch live
+        </button>
+      </div>
       {loading && (
         <p className="text-xs text-[var(--muted)] text-center">
           Real models think in real time — a full game can take a minute.
