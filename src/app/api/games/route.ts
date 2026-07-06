@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createGame, recentGames } from "@/lib/games";
+import { createGame, recentGames, CreateGameInput } from "@/lib/games";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,11 +18,7 @@ export async function POST(req: Request) {
   } catch {
     body = {};
   }
-  const input = (body ?? {}) as {
-    numPlayers?: number;
-    seatModels?: string[];
-    seed?: number;
-  };
+  const input = (body ?? {}) as CreateGameInput;
   try {
     const transcript = await createGame(input);
     return NextResponse.json({ id: transcript.id, transcript }, { status: 201 });
