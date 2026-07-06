@@ -150,3 +150,41 @@ export function buildProfile(model: string, rating: Partial<ModelRating> | undef
     recentGames,
   };
 }
+
+// ---------------------------------------------------------------------------
+// I/O helper — the only impure export in this module. Assembles a
+// ModelProfile straight from the store, for use by the profile page/route.
+// Kept separate from the pure fold functions above.
+// ---------------------------------------------------------------------------
+
+import { store } from "./store";
+
+const SUMMARIES_SCAN_LIMIT = 200;
+const TRANSCRIPTS_FOLD_CAP = 60;
+
+/**
+ * Assemble a model's profile from persisted data: scans the most recent
+ * `SUMMARIES_SCAN_LIMIT` game summaries for ones involving `model`, loads at
+ * most the `TRANSCRIPTS_FOLD_CAP` most recent of those transcripts, and folds
+ * them together with the model's leaderboard rating via `buildProfile`.
+ *
+ * Returns null when the model has no games among the scanned summaries AND
+ * no leaderboard entry (i.e. there's nothing to show).
+ */
+export async function assembleProfile(model: string): Promise<ModelProfile | null> {
+  const [summaries, board] = await Promise.all([store.listSummaries(SUMMARIES_SCAN_LIMIT), store.getLeaderboard()]);
+
+  const rating = board[model];
+  const matching = summaries
+    .filter((s) => s.models.includes(model))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, TRANSCRIPTS_FOLD_CAP);
+
+  if (matching.length === 0 && !rating) return null;
+
+  const transcripts = (
+    await Promise.all(matching.map((s) => store.getTranscript(s.id)))
+  ).filter((t): t is NonNullable<typeof t> => t !== null);
+
+  return buildProfile(model, rating, transcripts);
+}
