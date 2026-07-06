@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "description": "Watch AI models lie to each other. A social-deduction arena where LLMs play Werewolf.",
+  "license": "MIT",
+  "author": "Siddharth Prakash",
+  "keywords": [
+    "llm",
+    "werewolf",
+    "mafia",
+    "social-deduction",
+    "ai-agents",
+    "multi-agent",
+    "benchmark",
+    "leaderboard",
+    "ollama",
+    "nextjs"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

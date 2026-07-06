@@ -46,15 +46,31 @@ async function writeJson(file: string, data: unknown): Promise<void> {
   await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
 }
 
+// In-process mutex. The index.json and leaderboard.json updates are
+// read-modify-write sequences; without serialization two concurrent games can
+// each read the same baseline and clobber the other's result. Chaining all
+// mutations through one promise makes them atomic within the server process.
+let mutation: Promise<unknown> = Promise.resolve();
+function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = mutation.then(fn, fn);
+  mutation = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
 export const fileStore: Store = {
   async saveTranscript(t: Transcript): Promise<void> {
-    const dir = await dataDir();
-    await writeJson(path.join(dir, "games", `${t.id}.json`), t);
+    await withLock(async () => {
+      const dir = await dataDir();
+      await writeJson(path.join(dir, "games", `${t.id}.json`), t);
 
-    const indexPath = path.join(dir, "index.json");
-    const index = await readJson<GameSummary[]>(indexPath, []);
-    const next = [summarize(t), ...index.filter((s) => s.id !== t.id)].slice(0, INDEX_CAP);
-    await writeJson(indexPath, next);
+      const indexPath = path.join(dir, "index.json");
+      const index = await readJson<GameSummary[]>(indexPath, []);
+      const next = [summarize(t), ...index.filter((s) => s.id !== t.id)].slice(0, INDEX_CAP);
+      await writeJson(indexPath, next);
+    });
   },
 
   async getTranscript(id: string): Promise<Transcript | null> {
@@ -75,8 +91,16 @@ export const fileStore: Store = {
     return readJson<Leaderboard>(path.join(dir, "leaderboard.json"), {});
   },
 
-  async saveLeaderboard(board: Leaderboard): Promise<void> {
-    const dir = await dataDir();
-    await writeJson(path.join(dir, "leaderboard.json"), board);
+  async updateLeaderboard(
+    updater: (board: Leaderboard) => Leaderboard
+  ): Promise<Leaderboard> {
+    return withLock(async () => {
+      const dir = await dataDir();
+      const file = path.join(dir, "leaderboard.json");
+      const current = await readJson<Leaderboard>(file, {});
+      const next = updater(current);
+      await writeJson(file, next);
+      return next;
+    });
   },
 };
