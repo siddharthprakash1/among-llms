@@ -7,8 +7,19 @@ import { deriveState, stepDelay, totalSteps } from "@/lib/replay";
 import { ROLE_META, cn, modelLabel } from "@/lib/ui";
 import { playCue, SoundCue } from "@/lib/sound";
 import { GameEvent } from "@/lib/engine/types";
+import dynamic from "next/dynamic";
 import GameTable from "./GameTable";
 import EventFeed from "./EventFeed";
+
+// The 3D stage is heavy and WebGL-only, so load it lazily on the client.
+const Scene3D = dynamic(() => import("./Scene3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="grid place-items-center h-full min-h-[440px] text-[var(--muted)] text-sm">
+      Summoning the village…
+    </div>
+  ),
+});
 
 const SPEEDS = [1, 2, 4] as const;
 
@@ -42,6 +53,8 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [godView, setGodView] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [view, setView] = useState<"classic" | "cinema">("classic");
+  const [can3d, setCan3d] = useState(false);
 
   const state = useMemo(
     () => deriveState(transcript, step, { revealPrivate: godView || step >= total }),
@@ -78,6 +91,21 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
       if (cue) playCue(cue);
     }
   }, [step, transcript]);
+
+  // Prefer the 3D cinematic stage when WebGL is available and motion is allowed;
+  // otherwise fall back to the Classic 2D table.
+  useEffect(() => {
+    try {
+      const c = document.createElement("canvas");
+      const gl = c.getContext("webgl2") || c.getContext("webgl");
+      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const ok = !!gl && !reduced;
+      setCan3d(ok);
+      if (ok) setView("cinema");
+    } catch {
+      setCan3d(false);
+    }
+  }, []);
 
   const seek = useCallback(
     (next: number) => {
@@ -170,17 +198,42 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
 
       {/* main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
-        <div className="glass p-4 sm:p-6">
-          <GameTable
-            seats={state.seats}
-            highlight={state.highlight}
-            banner={state.banner}
-            phase={state.phase}
-            day={state.day}
-            showRole={godView || state.finished}
-          />
+        <div className="glass overflow-hidden relative min-h-[440px] lg:min-h-[560px]">
+          {view === "cinema" && can3d ? (
+            <>
+              <Scene3D
+                seats={state.seats}
+                highlight={state.highlight}
+                phase={state.phase}
+                finished={state.finished}
+                showRole={godView || state.finished}
+                playing={playing}
+              />
+              {state.banner && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none px-4">
+                  <div className="display text-2xl text-[var(--text)] drop-shadow-lg">
+                    {state.banner.label}
+                  </div>
+                  {state.banner.sublabel && (
+                    <div className="text-[11px] text-[var(--muted)]">{state.banner.sublabel}</div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="p-4 sm:p-6">
+              <GameTable
+                seats={state.seats}
+                highlight={state.highlight}
+                banner={state.banner}
+                phase={state.phase}
+                day={state.day}
+                showRole={godView || state.finished}
+              />
+            </div>
+          )}
         </div>
-        <div className="h-[460px] lg:h-auto lg:min-h-[520px]">
+        <div className="h-[460px] lg:h-auto lg:min-h-[560px]">
           <EventFeed log={state.log} seats={state.seats} />
         </div>
       </div>
@@ -221,6 +274,15 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
         >
           {speed}×
         </button>
+        {can3d && (
+          <button
+            className={cn("btn btn-ghost px-3", view === "cinema" && "!text-[var(--gold)]")}
+            onClick={() => setView((v) => (v === "cinema" ? "classic" : "cinema"))}
+            title="Toggle the 3D cinematic stage"
+          >
+            {view === "cinema" ? "🎬 Cinematic" : "🎞 Classic"}
+          </button>
+        )}
         <button
           className={cn("btn btn-ghost px-3", godView && "!text-[var(--gold)]")}
           onClick={() => setGodView((g) => !g)}
