@@ -4,11 +4,13 @@
 import { randomUUID } from "node:crypto";
 import { GameConfig, ToggleableRole, Transcript } from "./engine/types";
 import { simulate } from "./engine/werewolf";
-import { MAX_PLAYERS, MIN_PLAYERS } from "./engine/roles";
+import { MAX_PLAYERS, MIN_PLAYERS, buildPlayers } from "./engine/roles";
+import { makeRng } from "./engine/rng";
 import { buildBrainFactory } from "./agents/brains";
 import { listModels } from "./agents/registry";
 import { applyGame } from "./elo";
 import { store, GameSummary } from "./store";
+import { createLive, finishLive, pushLive } from "./live";
 
 export interface CreateGameInput {
   numPlayers?: number;
@@ -60,6 +62,37 @@ export async function createGame(input: CreateGameInput): Promise<Transcript> {
   await store.updateLeaderboard((board) => applyGame(board, transcript.outcomes, transcript.id));
 
   return transcript;
+}
+
+/**
+ * Kick off a live game: register it in-process, return the id immediately, and
+ * simulate in the background — streaming events to SSE subscribers, then
+ * persisting the finished transcript and updating the leaderboard. If the
+ * process dies mid-game the game is simply never persisted (abandoned).
+ */
+export function createLiveGame(input: CreateGameInput): { id: string } {
+  const config = buildConfig(input);
+  const id = randomUUID().replace(/-/g, "").slice(0, 12);
+  const createdAt = new Date().toISOString();
+  const players = buildPlayers(config, makeRng(config.seed));
+  createLive(id, createdAt, config, players);
+
+  void (async () => {
+    try {
+      const transcript = await simulate(config, buildBrainFactory(config.seed), {
+        id,
+        createdAt,
+        onEvent: (event, index) => pushLive(id, event, index),
+      });
+      await store.saveTranscript(transcript);
+      await store.updateLeaderboard((board) => applyGame(board, transcript.outcomes, transcript.id));
+      finishLive(id, "finished");
+    } catch {
+      finishLive(id, "abandoned");
+    }
+  })();
+
+  return { id };
 }
 
 export function getGame(id: string): Promise<Transcript | null> {

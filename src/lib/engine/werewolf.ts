@@ -29,6 +29,33 @@ import { makeRng, randInt, Rng } from "./rng";
 interface SimulateOptions {
   id: string;
   createdAt: string;
+  /** Streaming hook: called as each event is produced (powers live mode). */
+  onEvent?: (event: GameEvent, index: number) => void;
+}
+
+/**
+ * An event array that also notifies `onEvent` on every push — including pushes
+ * from helper functions that receive the array — without touching any of the
+ * engine's push sites. Returns a plain array when no callback is given.
+ */
+function createEventLog(onEvent?: (event: GameEvent, index: number) => void): GameEvent[] {
+  const arr: GameEvent[] = [];
+  if (!onEvent) return arr;
+  return new Proxy(arr, {
+    get(target, prop, receiver) {
+      if (prop === "push") {
+        return (...items: GameEvent[]): number => {
+          for (const item of items) {
+            target.push(item);
+            onEvent(item, target.length - 1);
+          }
+          return target.length;
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+    },
+  });
 }
 
 interface MutableState {
@@ -231,7 +258,8 @@ export async function simulate(
     hunterFired: new Set(),
   };
 
-  const events: GameEvent[] = [{ kind: "game_start", day: 0 }];
+  const events = createEventLog(opts.onEvent);
+  events.push({ kind: "game_start", day: 0 });
   const maxDays = config.maxDays ?? config.numPlayers + 3;
 
   let day = 0;
