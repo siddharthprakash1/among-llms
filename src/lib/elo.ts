@@ -79,7 +79,7 @@ export function applyGame(board: Leaderboard, outcomes: SeatOutcome[], gameId: s
       ...(next[m] ?? {}),
       asWolf: { ...base.asWolf, ...next[m]?.asWolf },
       asVillage: { ...base.asVillage, ...next[m]?.asVillage },
-      asJester: { ...base.asJester, ...(next[m] as Partial<ModelRating> | undefined)?.asJester },
+      asJester: { ...base.asJester, ...next[m]?.asJester },
       history: next[m]?.history ?? [],
     };
     return next[m];

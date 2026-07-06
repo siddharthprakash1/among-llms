@@ -39,7 +39,6 @@ export default function ModelProfile({ profile }: { profile: ModelProfileData })
         <div className="flex flex-wrap items-end justify-between gap-4 mt-1">
           <div>
             <h1 className="display text-4xl sm:text-5xl">{modelLabel(model)}</h1>
-            <div className="chip mt-2">{model}</div>
           </div>
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-wider text-[var(--muted)] font-semibold">Elo</div>

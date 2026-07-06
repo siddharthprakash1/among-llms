@@ -153,8 +153,7 @@ export function pluralityPick(prefs: number[], rng: Rng): number | null {
 }
 
 export function tallyVotes(
-  votes: { targetId: number | null }[],
-  rng: Rng
+  votes: { targetId: number | null }[]
 ): { tally: Record<number, number>; eliminatedId: number | null; tie: boolean } {
   const tally: Record<number, number> = {};
   for (const v of votes) {
@@ -166,7 +165,6 @@ export function tallyVotes(
   const max = Math.max(...entries.map(([, c]) => c));
   const top = entries.filter(([, c]) => c === max).map(([id]) => id);
   if (top.length > 1) return { tally, eliminatedId: null, tie: true };
-  void rng;
   return { tally, eliminatedId: top[0], tie: false };
 }
 
@@ -209,6 +207,10 @@ async function fireHunter(
   day: number,
   phase: "night" | "day"
 ): Promise<void> {
+  // Snapshot of not-yet-fired dead hunters at call time: a hunter killed by
+  // another hunter's shot within this same call fires on the NEXT invocation,
+  // not this one. Only reachable via custom roleCounts with 2+ hunters — the
+  // default role tables cap at 1 hunter per game.
   const fallen = s.deaths.filter((d) => d.role === "hunter" && !s.hunterFired.has(d.playerId));
   for (const d of fallen) {
     s.hunterFired.add(d.playerId);
@@ -459,7 +461,7 @@ export async function simulate(
       events.push({ kind: "vote", day, voterId: voter.id, targetId: target });
     }
 
-    const { tally, eliminatedId, tie } = tallyVotes(dayVotes, rng);
+    const { tally, eliminatedId, tie } = tallyVotes(dayVotes);
     events.push({ kind: "vote_result", day, tally, eliminatedId, tie });
     if (eliminatedId !== null) {
       const victim = state.players[eliminatedId];

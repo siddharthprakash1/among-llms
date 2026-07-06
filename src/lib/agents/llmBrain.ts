@@ -148,8 +148,7 @@ export class LlmBrain implements Brain {
   async accuse(view: PlayerView): Promise<AccuseDecision> {
     try {
       const text = await this.chat(SYSTEM_PROMPT, accusePrompt(view));
-      const obj = { targetId: parseTargetResponse(text, view), text: parseTextResponse(text, ["reason"]) ?? undefined };
-      return obj;
+      return { targetId: parseTargetResponse(text, view), text: parseTextResponse(text, ["reason"]) ?? undefined };
     } catch {
       return this.fallback.accuse(view);
     }
@@ -158,9 +157,9 @@ export class LlmBrain implements Brain {
   async defend(view: PlayerView, against: AccusationRecord[]): Promise<string> {
     try {
       const text = await this.chat(SYSTEM_PROMPT, defendPrompt(view, against));
-      return parseTextResponse(text, ["statement"]) ?? this.fallback.defend(view);
+      return parseTextResponse(text, ["statement"]) ?? this.fallback.defend(view, against);
     } catch {
-      return this.fallback.defend(view);
+      return this.fallback.defend(view, against);
     }
   }
 

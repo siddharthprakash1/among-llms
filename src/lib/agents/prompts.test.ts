@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTextResponse, parseWitchResponse, parseTargetResponse } from "./prompts";
+import { buildContext, parseTextResponse, parseWitchResponse, parseTargetResponse } from "./prompts";
 import { PlayerView } from "../engine/types";
 
 const view = {
@@ -38,5 +38,33 @@ describe("parseTargetResponse", () => {
   it("still resolves names and numbers", () => {
     expect(parseTargetResponse('{"target": "Bram"}', view)).toBe(1);
     expect(parseTargetResponse('{"target": 1}', view)).toBe(1);
+  });
+});
+
+describe("buildContext role redaction", () => {
+  const villagerView = {
+    ...view,
+    self: { id: 0, name: "Ada", role: "villager", alignment: "good", model: "mock" },
+    wolfChat: [],
+    potions: null,
+  } as unknown as PlayerView;
+
+  const wolfView = {
+    ...view,
+    self: { id: 0, name: "Ada", role: "werewolf", alignment: "evil", model: "mock" },
+    knownWolves: [0, 1],
+    wolfChat: [{ day: 1, wolfId: 1, text: "tonight we strike" }],
+    potions: null,
+  } as unknown as PlayerView;
+
+  it("omits the pack chat section for a villager view", () => {
+    const ctx = buildContext(villagerView);
+    expect(ctx).not.toContain("Your pack's private chat");
+  });
+
+  it("includes the pack chat section and its lines for a wolf view", () => {
+    const ctx = buildContext(wolfView);
+    expect(ctx).toContain("Your pack's private chat");
+    expect(ctx).toContain("tonight we strike");
   });
 });

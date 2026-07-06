@@ -20,7 +20,6 @@ describe("buildDossier", () => {
     expect(d).toContain("Ada: voted: Cyra(D1)");
     expect(d).toContain("1 vote(s) against players revealed innocent");
     expect(d).toContain("Bram: accused: Ada(D1)");
-    expect(d).toContain("Ada");
     expect(d).not.toContain("Cyra:"); // dead players get no line
   });
 });

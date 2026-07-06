@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { simulate, winnerFor, tallyVotes, pluralityPick } from "./werewolf";
 import { buildPlayers, defaultRoleCounts } from "./roles";
 import { makeRng } from "./rng";
-import { BrainFactory, GameConfig, Player, PlayerView, Role, Transcript, WitchDecision } from "./types";
+import { AccusationRecord, BrainFactory, GameConfig, Player, PlayerView, Role, Transcript, WitchDecision } from "./types";
 import { buildBrainFactory } from "../agents/brains";
+import { MockBrain } from "../agents/mockBrain";
 
 const OPTS = { id: "test", createdAt: "2026-01-01T00:00:00.000Z" };
 
@@ -233,19 +234,15 @@ describe("pure helpers", () => {
   });
 
   it("tallyVotes eliminates a clear plurality and no one on a tie", () => {
-    const rng = makeRng(1);
-    const clear = tallyVotes(
-      [{ targetId: 2 }, { targetId: 2 }, { targetId: 3 }],
-      rng
-    );
+    const clear = tallyVotes([{ targetId: 2 }, { targetId: 2 }, { targetId: 3 }]);
     expect(clear.eliminatedId).toBe(2);
     expect(clear.tie).toBe(false);
 
-    const tie = tallyVotes([{ targetId: 2 }, { targetId: 3 }], rng);
+    const tie = tallyVotes([{ targetId: 2 }, { targetId: 3 }]);
     expect(tie.eliminatedId).toBeNull();
     expect(tie.tie).toBe(true);
 
-    const allAbstain = tallyVotes([{ targetId: null }, { targetId: null }], rng);
+    const allAbstain = tallyVotes([{ targetId: null }, { targetId: null }]);
     expect(allAbstain.eliminatedId).toBeNull();
     expect(allAbstain.tie).toBe(false);
   });
@@ -254,6 +251,36 @@ describe("pure helpers", () => {
     const rng = makeRng(1);
     expect(pluralityPick([4, 4, 1], rng)).toBe(4);
     expect(pluralityPick([], rng)).toBeNull();
+  });
+});
+
+describe("mock brain defense", () => {
+  it("cites its first accuser by name when defending against an accusation", async () => {
+    const view: PlayerView = {
+      self: { id: 0, name: "Ada", role: "villager", alignment: "good", model: "mock" },
+      day: 1,
+      phase: "day",
+      players: [
+        { id: 0, name: "Ada", avatar: "🦊", alive: true },
+        { id: 1, name: "Bram", avatar: "🐻", alive: true },
+      ],
+      aliveIds: [0, 1],
+      knownWolves: [],
+      seerResults: [],
+      lastProtectedId: null,
+      wolfChat: [],
+      potions: null,
+      deaths: [],
+      statements: [],
+      votes: [],
+      accusations: [],
+      defenses: [],
+      dossier: "",
+    };
+    const against: AccusationRecord[] = [{ day: 1, from: 1, target: 0, text: "sus" }];
+    const brain = new MockBrain("mock", 1);
+    const text = await brain.defend(view, against);
+    expect(text).toContain("Bram");
   });
 });
 

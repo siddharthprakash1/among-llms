@@ -16,7 +16,9 @@ const DEFAULT_HEIGHT = 48;
  *   (a degenerate two-point line) so a single-game history still renders.
  * - 2+ entries: x is spread evenly from 0 to width; y is normalized against
  *   the min/max elo in the series (min -> bottom, max -> top), flipped
- *   because SVG y grows downward.
+ *   because SVG y grows downward. When every entry has equal elo (span
+ *   collapses to 0), the line is flat and centered at y=height/2 rather than
+ *   pinned to the bottom edge.
  */
 export function sparklinePoints(history: EloHistoryEntry[], width: number, height: number): string {
   const n = history.length;
@@ -29,7 +31,12 @@ export function sparklinePoints(history: EloHistoryEntry[], width: number, heigh
   const elos = history.map((h) => h.elo);
   const min = Math.min(...elos);
   const max = Math.max(...elos);
-  const span = max - min || 1;
+  const span = max - min;
+
+  if (span === 0) {
+    const y = height / 2;
+    return elos.map((_, i) => `${(i / (n - 1)) * width},${y}`).join(" ");
+  }
 
   return elos
     .map((elo, i) => {

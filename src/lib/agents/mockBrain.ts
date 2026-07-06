@@ -9,6 +9,7 @@
 //     buddying the wolf?") to chain-catch the remaining wolves.
 
 import {
+  AccusationRecord,
   AccuseDecision,
   Brain,
   NightDecision,
@@ -188,6 +189,11 @@ const JESTER_LINES = [
   "Strange, isn't it, how I always seem to know where the bodies are…",
   "Vote how you must. I was out walking by the mill last night, that's all.",
   "Honestly? I wouldn't even blame you for voting me out. Just saying.",
+];
+const REBUTTAL_TEMPLATES = [
+  "Rich words from {target} — check whose votes always land beside the dead.",
+  "Of course {target} points at me. Wolves always shout first.",
+  "{target} accuses me to hide their own trail. Watch them tonight.",
 ];
 
 function fillTarget(template: string, targetName: string): string {
@@ -389,7 +395,10 @@ export class MockBrain implements Brain {
     return { targetId: suspect, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, suspect)) };
   }
 
-  async defend(view: PlayerView): Promise<string> {
+  async defend(view: PlayerView, against: AccusationRecord[]): Promise<string> {
+    if (against.length > 0) {
+      return fillTarget(pick(this.rng, REBUTTAL_TEMPLATES), nameOf(view, against[0].from));
+    }
     return render(view, "defend", null, this.rng);
   }
 

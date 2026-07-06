@@ -25,13 +25,13 @@ describe("sparklinePoints", () => {
     expect(sparklinePoints(history, 100, 50)).toBe("0,25 100,25");
   });
 
-  it("flattens to the baseline (y=height) for every point when all elo values are equal", () => {
-    // span falls back to 1 when max===min, so (elo-min)/span=0 for every
-    // point, giving y = height - 0 = height (a flat line along the bottom).
+  it("centers the flat line at y=height/2 when all elo values are equal", () => {
+    // span collapses to 0 when max===min, so rather than pin the line to the
+    // bottom edge we center it vertically at height/2.
     const history: EloHistoryEntry[] = [
       { gameId: "g1", delta: 0, elo: 1000 },
       { gameId: "g2", delta: 0, elo: 1000 },
     ];
-    expect(sparklinePoints(history, 100, 50)).toBe("0,50 100,50");
+    expect(sparklinePoints(history, 100, 50)).toBe("0,25 100,25");
   });
 });
