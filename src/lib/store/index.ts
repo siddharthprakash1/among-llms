@@ -4,6 +4,7 @@
 
 import { Transcript, Winner } from "../engine/types";
 import { Leaderboard } from "../elo";
+import { Tournament } from "../tournaments/types";
 
 export interface GameSummary {
   id: string;
@@ -15,6 +16,15 @@ export interface GameSummary {
   seed: number;
 }
 
+export interface TournamentSummary {
+  id: string;
+  createdAt: string;
+  name: string;
+  format: string;
+  status: string;
+  roster: string[];
+}
+
 export interface Store {
   saveTranscript(t: Transcript): Promise<void>;
   getTranscript(id: string): Promise<Transcript | null>;
@@ -22,6 +32,20 @@ export interface Store {
   getLeaderboard(): Promise<Leaderboard>;
   /** Atomic read-modify-write: serialized so concurrent games can't clobber each other. */
   updateLeaderboard(updater: (board: Leaderboard) => Leaderboard): Promise<Leaderboard>;
+  saveTournament(t: Tournament): Promise<void>;
+  getTournament(id: string): Promise<Tournament | null>;
+  listTournaments(limit?: number): Promise<TournamentSummary[]>;
+}
+
+export function summarizeTournament(t: Tournament): TournamentSummary {
+  return {
+    id: t.id,
+    createdAt: t.createdAt,
+    name: t.config.name,
+    format: t.config.format,
+    status: t.status,
+    roster: t.config.roster,
+  };
 }
 
 export function summarize(t: Transcript): GameSummary {

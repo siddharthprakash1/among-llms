@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { Transcript } from "../engine/types";
 import { Leaderboard } from "../elo";
-import { GameSummary, Store, summarize } from "./index";
+import { Tournament } from "../tournaments/types";
+import { GameSummary, Store, summarize, TournamentSummary, summarizeTournament } from "./index";
 
 const INDEX_CAP = 200;
 
@@ -102,5 +103,32 @@ export const fileStore: Store = {
       await writeJson(file, next);
       return next;
     });
+  },
+
+  async saveTournament(t: Tournament): Promise<void> {
+    await withLock(async () => {
+      const dir = await dataDir();
+      await fs.mkdir(path.join(dir, "tournaments"), { recursive: true });
+      await writeJson(path.join(dir, "tournaments", `${t.id}.json`), t);
+      const indexPath = path.join(dir, "tournaments-index.json");
+      const index = await readJson<TournamentSummary[]>(indexPath, []);
+      const next = [summarizeTournament(t), ...index.filter((s) => s.id !== t.id)].slice(0, INDEX_CAP);
+      await writeJson(indexPath, next);
+    });
+  },
+
+  async getTournament(id: string): Promise<Tournament | null> {
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+    const dir = await dataDir();
+    return readJson<Tournament | null>(path.join(dir, "tournaments", `${id}.json`), null);
+  },
+
+  async listTournaments(limit = 50): Promise<TournamentSummary[]> {
+    const dir = await dataDir();
+    const index = await readJson<TournamentSummary[]>(
+      path.join(dir, "tournaments-index.json"),
+      []
+    );
+    return index.slice(0, limit);
   },
 };
