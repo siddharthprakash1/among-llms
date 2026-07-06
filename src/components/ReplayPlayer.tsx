@@ -18,7 +18,10 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
   const [godView, setGodView] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const state = useMemo(() => deriveState(transcript, step), [transcript, step]);
+  const state = useMemo(
+    () => deriveState(transcript, step, { revealPrivate: godView || step >= total }),
+    [transcript, step, godView, total]
+  );
 
   useEffect(() => {
     if (!playing) return;
@@ -98,12 +101,18 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
             "card px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-2",
             state.winner === "good"
               ? "!border-[color-mix(in_srgb,var(--good)_55%,transparent)]"
-              : "!border-[color-mix(in_srgb,var(--evil)_55%,transparent)]"
+              : state.winner === "evil"
+              ? "!border-[color-mix(in_srgb,var(--evil)_55%,transparent)]"
+              : "!border-[color-mix(in_srgb,var(--gold)_55%,transparent)]"
           )}
         >
           <div>
             <div className="display text-2xl">
-              {state.winner === "good" ? "🏡 The Village prevails" : "🐺 The Werewolves win"}
+              {state.winner === "good"
+                ? "🏡 The Village prevails"
+                : state.winner === "evil"
+                ? "🐺 The Werewolves win"
+                : "🃏 The Jester wins alone"}
             </div>
             <div className="text-sm text-[var(--muted)]">{state.reason}</div>
           </div>

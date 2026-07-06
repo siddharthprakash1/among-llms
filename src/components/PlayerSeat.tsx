@@ -33,6 +33,8 @@ export default function PlayerSeat({ seat, highlight, showRole, style }: Props) 
     : reveal
     ? meta.align === "evil"
       ? "color-mix(in srgb, var(--evil) 65%, transparent)"
+      : meta.align === "neutral"
+      ? "color-mix(in srgb, var(--gold) 60%, transparent)"
       : "color-mix(in srgb, var(--good) 55%, transparent)"
     : "var(--border)";
 

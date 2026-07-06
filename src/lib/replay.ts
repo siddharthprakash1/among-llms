@@ -2,10 +2,19 @@
 // world state to render. The ReplayPlayer just advances `step` on a timer and
 // renders deriveState(transcript, step). No side effects, client-safe.
 
-import { Alignment, GameEvent, Role, Transcript } from "./engine/types";
+import { Alignment, GameEvent, Role, Transcript, Winner } from "./engine/types";
 
 export type ReplayPhase = "pregame" | "night" | "day" | "over";
-export type LogTone = "narration" | "speech" | "death" | "vote" | "system" | "night";
+export type LogTone =
+  | "narration"
+  | "speech"
+  | "death"
+  | "vote"
+  | "system"
+  | "night"
+  | "wolfchat"
+  | "accusation"
+  | "defense";
 
 export interface ReplaySeat {
   id: number;
@@ -33,6 +42,7 @@ export interface Highlight {
   checkEvil?: boolean;
   saveId?: number;
   eliminatedId?: number;
+  accusedId?: number;
 }
 
 export interface ReplayState {
@@ -45,7 +55,7 @@ export interface ReplayState {
   log: LogEntry[];
   highlight: Highlight;
   finished: boolean;
-  winner?: Alignment;
+  winner?: Winner;
   reason?: string;
 }
 
@@ -69,12 +79,22 @@ function highlightFor(ev: GameEvent): Highlight {
       return { speakingId: ev.playerId };
     case "death":
       return ev.cause === "vote" ? { eliminatedId: ev.playerId } : {};
+    case "accusation":
+      return { speakingId: ev.from, accusedId: ev.target };
+    case "defense":
+      return { speakingId: ev.playerId };
+    case "hunter_shot":
+      return { killId: ev.targetId };
     default:
       return {};
   }
 }
 
-export function deriveState(t: Transcript, rawStep: number): ReplayState {
+export function deriveState(
+  t: Transcript,
+  rawStep: number,
+  opts: { revealPrivate?: boolean } = {}
+): ReplayState {
   const total = totalSteps(t);
   const step = Math.max(0, Math.min(rawStep, total));
 
@@ -93,7 +113,7 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
   let phase: ReplayPhase = "pregame";
   let banner: ReplayState["banner"] = null;
   let finished = false;
-  let winner: Alignment | undefined;
+  let winner: Winner | undefined;
   let reason: string | undefined;
 
   const seatOf = (id: number) => seats.find((s) => s.id === id)!;
@@ -120,6 +140,12 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
           day,
           text: `${ev.phase === "night" ? "🌙" : "☀️"} ${ev.label} — ${ev.sublabel ?? ""}`.trim(),
         });
+        break;
+      case "wolf_chat":
+        if (opts.revealPrivate) {
+          log.push({ key: k, tone: "wolfchat", day: ev.day, playerId: ev.wolfId,
+            text: `🐺 ${nameIn(seats, ev.wolfId)} (pack): "${ev.text}"` });
+        }
         break;
       case "wolf_kill":
         log.push({
@@ -155,8 +181,20 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
           key: k,
           tone: "narration",
           day: ev.day,
-          text: `The wolves struck — but ${nameIn(seats, ev.targetId)} was protected. No one died.`,
+          text: `The wolves struck — but ${nameIn(seats, ev.targetId)} was ${("by" in ev && ev.by === "witch") ? "snatched back by the Witch" : "protected"}. No one died.`,
         });
+        break;
+      case "witch_action":
+        if (opts.revealPrivate) {
+          log.push({ key: k, tone: "night", day: ev.day,
+            text: ev.action === "heal"
+              ? `🧪 The Witch (${nameIn(seats, ev.witchId)}) pours the healing draught over ${nameIn(seats, ev.targetId)}.`
+              : `🧪 The Witch (${nameIn(seats, ev.witchId)}) slips poison to ${nameIn(seats, ev.targetId)}.` });
+        }
+        break;
+      case "hunter_shot":
+        log.push({ key: k, tone: "death", day: ev.day,
+          text: `🏹 With their dying breath, ${nameIn(seats, ev.hunterId)} shoots ${nameIn(seats, ev.targetId)}!` });
         break;
       case "death": {
         const seat = seatOf(ev.playerId);
@@ -168,9 +206,10 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
           day: ev.day,
           playerId: ev.playerId,
           text:
-            ev.cause === "wolves"
-              ? `☠️ ${seat.name} was found dead at dawn. They were a ${ev.role}.`
-              : `🗳️ The village voted out ${seat.name} — who was a ${ev.role}.`,
+            ev.cause === "wolves" ? `☠️ ${seat.name} was found dead at dawn. They were a ${ev.role}.`
+            : ev.cause === "poison" ? `☠️ ${seat.name} died frothing at dawn — poisoned. They were a ${ev.role}.`
+            : ev.cause === "hunter" ? `☠️ ${seat.name} falls to the Hunter's last arrow. They were a ${ev.role}.`
+            : `🗳️ The village voted out ${seat.name} — who was a ${ev.role}.`,
         });
         break;
       }
@@ -182,6 +221,13 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
           playerId: ev.playerId,
           text: ev.text,
         });
+        break;
+      case "accusation":
+        log.push({ key: k, tone: "accusation", day: ev.day, playerId: ev.from,
+          text: `⚖️ ${nameIn(seats, ev.from)} accuses ${nameIn(seats, ev.target)}: "${ev.text}"` });
+        break;
+      case "defense":
+        log.push({ key: k, tone: "defense", day: ev.day, playerId: ev.playerId, text: ev.text });
         break;
       case "vote":
         log.push({
@@ -216,7 +262,7 @@ export function deriveState(t: Transcript, rawStep: number): ReplayState {
           key: k,
           tone: "system",
           day,
-          text: `${ev.winner === "good" ? "🏡 The Village wins!" : "🐺 The Werewolves win!"} ${
+          text: `${ev.winner === "good" ? "🏡 The Village wins!" : ev.winner === "evil" ? "🐺 The Werewolves win!" : "🃏 The Jester wins!"} ${
             ev.reason
           }`,
         });
@@ -246,6 +292,16 @@ export function stepDelay(t: Transcript, step: number, speed: number): number {
         return 1500;
       case "saved":
         return 2200;
+      case "wolf_chat":
+        return 1700;
+      case "accusation":
+        return 2300;
+      case "defense":
+        return 2400;
+      case "witch_action":
+        return 1500;
+      case "hunter_shot":
+        return 2300;
       case "vote":
         return 650;
       case "vote_result":

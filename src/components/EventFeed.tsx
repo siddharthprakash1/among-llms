@@ -25,7 +25,7 @@ export default function EventFeed({ log, seats }: Props) {
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2.5">
         {log.map((entry) => {
-          if (entry.tone === "speech") {
+          if (entry.tone === "speech" || entry.tone === "defense") {
             const seat = seatOf(entry.playerId);
             return (
               <div key={entry.key} className="float-in flex gap-2.5">
@@ -39,6 +39,9 @@ export default function EventFeed({ log, seats }: Props) {
                       {modelLabel(seat?.model ?? "")}
                     </span>
                   </div>
+                  {entry.tone === "defense" && (
+                    <div className="text-[10px] text-[var(--gold)] mt-0.5">🛡 in their defense</div>
+                  )}
                   <div className="text-[13.5px] text-[var(--text)] bg-[var(--panel-2)] border border-[var(--border)] rounded-xl rounded-tl-sm px-3 py-1.5 mt-0.5">
                     {entry.text}
                   </div>
@@ -64,7 +67,9 @@ export default function EventFeed({ log, seats }: Props) {
                 entry.tone === "night" && "text-[var(--moon)] italic",
                 entry.tone === "death" && "text-[var(--blood)] font-medium",
                 entry.tone === "narration" && "text-[var(--muted)] text-center",
-                entry.tone === "vote" && "text-[var(--muted)]"
+                entry.tone === "vote" && "text-[var(--muted)]",
+                entry.tone === "wolfchat" && "text-[var(--evil)] italic",
+                entry.tone === "accusation" && "text-[var(--gold)] font-medium"
               )}
             >
               {entry.text}

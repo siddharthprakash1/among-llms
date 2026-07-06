@@ -6,11 +6,14 @@ export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export const ROLE_META: Record<Role, { emoji: string; label: string; align: "good" | "evil" }> = {
+export const ROLE_META: Record<Role, { emoji: string; label: string; align: "good" | "evil" | "neutral" }> = {
   werewolf: { emoji: "🐺", label: "Werewolf", align: "evil" },
   seer: { emoji: "🔮", label: "Seer", align: "good" },
   doctor: { emoji: "🩺", label: "Doctor", align: "good" },
   villager: { emoji: "🧑‍🌾", label: "Villager", align: "good" },
+  hunter: { emoji: "🏹", label: "Hunter", align: "good" },
+  witch: { emoji: "🧪", label: "Witch", align: "good" },
+  jester: { emoji: "🃏", label: "Jester", align: "neutral" },
 };
 
 export function pct(n: number): string {

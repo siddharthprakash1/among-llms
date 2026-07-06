@@ -2,7 +2,7 @@
 // store (perfect for local runs); swap `store` for a KV/DB adapter to persist
 // on serverless hosts. See README "Deploying".
 
-import { Transcript } from "../engine/types";
+import { Transcript, Winner } from "../engine/types";
 import { Leaderboard } from "../elo";
 
 export interface GameSummary {
@@ -10,7 +10,7 @@ export interface GameSummary {
   createdAt: string;
   numPlayers: number;
   models: string[]; // distinct model ids seated
-  winner: "good" | "evil";
+  winner: Winner;
   days: number;
   seed: number;
 }
@@ -20,7 +20,8 @@ export interface Store {
   getTranscript(id: string): Promise<Transcript | null>;
   listSummaries(limit?: number): Promise<GameSummary[]>;
   getLeaderboard(): Promise<Leaderboard>;
-  saveLeaderboard(board: Leaderboard): Promise<void>;
+  /** Atomic read-modify-write: serialized so concurrent games can't clobber each other. */
+  updateLeaderboard(updater: (board: Leaderboard) => Leaderboard): Promise<Leaderboard>;
 }
 
 export function summarize(t: Transcript): GameSummary {
