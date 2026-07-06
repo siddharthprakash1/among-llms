@@ -24,10 +24,13 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 
 ## Features
 
-- 🎭 **Watch a full game play out** — a polished, animated replay of the whole match: night kills, the Seer's visions, the Doctor's saves, day-time debate, and the vote. Scrub, pause, change speed, reveal roles.
+- 🎬 **Cinematic 3D stage** — watch the game unfold on a moonlit 3D village table with an **auto-director camera** that pushes in on the speaker, drops low for night kills, and cranes over the vote. Falls back to a polished 2D "Classic view" (and does automatically when WebGL is unavailable or reduced-motion is set).
+- 🎭 **Rich roles & real debate** — Werewolf, Seer, Doctor, **Hunter** (revenge shot on death), **Witch** (heal + poison potions), and a **Jester** who wins by getting himself lynched. Days run in three beats — statements → formal accusations → defenses → vote — and wolves hold a private **pack chat** at night.
+- 📡 **Live mode** — start a match and watch models think in *real time*, streamed over SSE (resumable, join mid-game). Or replay any finished game.
 - ⚔️ **Mixed-model tables** — sit GPT, Claude, Llama, Qwen, Mistral, and the built-in bots at the *same* table and watch them turn on each other.
-- 🏆 **ELO leaderboard** — every match updates ratings. Separate **Deception** (win-rate as Werewolf) and **Detection** (win-rate as Villager) scores.
-- 🔌 **Hybrid run model** — works out of the box with a deterministic offline bot (no key, no network). Add a key or point at Ollama for real models.
+- 🏆 **ELO leaderboard & tournaments** — every match updates ratings (separate **Deception**/**Detection**/**Jester** scores); run round-robin seasons or knockout brackets and browse per-model profiles.
+- 🔊 **Event-driven sound** — a synthesized (zero-asset) score reacts to kills, saves, votes, and endings. Off by default; one toggle.
+- 🔌 **Hybrid run model** — works out of the box with deterministic offline bots (no key, no network). Add a key or point at Ollama for real models.
 - 🔗 **Shareable replays** — every game gets a permalink. Send someone the exact match.
 - 🧪 **Deterministic engine** — a seed + the bots reproduce a game exactly. Fully unit-tested.
 - 🛟 **Never crashes on a bad model** — if a model times out or returns garbage, that turn transparently falls back to the heuristic bot. A flaky LLM can't break a game.
@@ -105,8 +108,13 @@ src/
   lib/elo.ts     team-ELO leaderboard math
   lib/store/     pluggable JSON store (tmpdir fallback for read-only hosts)
   lib/replay.ts  fold a transcript into the state to render at any step
-  app/           home · /game/[id] replay · /leaderboard · API routes
-  components/     GameTable · PlayerSeat · EventFeed · ReplayPlayer · …
+  lib/director.ts pure state→camera-shot mapping for the 3D auto-director
+  lib/live.ts    in-process registry powering SSE live games
+  lib/sound.ts   synthesized (no-asset) Web Audio cues
+  app/           home · /game/[id] (replay or live) · /leaderboard ·
+                 /tournaments · /models/[id] · API routes (+ SSE stream)
+  components/     GameTable · Scene3D · Ambience · EventFeed · ReplayPlayer ·
+                 LiveGame · …
 ```
 
 ## Testing
@@ -115,7 +123,7 @@ src/
 npm test
 ```
 
-Unit tests cover the engine and scoring: seeded determinism, role setup, the Doctor's save, the Seer's reads, vote tallying and ties, both win conditions, guaranteed termination, action legality, and the ELO math.
+Unit tests cover the engine and scoring: seeded determinism, role setup, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, the three-beat day ordering, both win conditions, guaranteed termination, action legality, the ELO math (including jester exclusion/history), the replay reducer, and the pure director-camera shot mapping.
 
 ## Deploying
 
@@ -123,13 +131,12 @@ Deploys to **Vercel** (or any Node host) as-is. One caveat: the default store wr
 
 ## Tech stack
 
-Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Framer Motion · Vitest. No database, no LLM SDKs — real models are reached with plain `fetch`.
+Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Framer Motion · three.js / react-three-fiber / drei / postprocessing (3D stage) · Web Audio (sound) · Server-Sent Events (live) · Vitest. No database, no LLM SDKs — real models are reached with plain `fetch`, and all 3D geometry is procedural (no external assets).
 
 ## Roadmap
 
 - More games: Secret Hitler, Avalon, Diplomacy
 - Human-in-the-seat: play against the models
-- Tournaments & scheduled model-vs-model ladders
 - Per-turn "why did it do that?" reasoning inspector
 - A public hosted arena
 
