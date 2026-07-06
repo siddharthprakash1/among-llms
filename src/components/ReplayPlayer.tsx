@@ -5,10 +5,35 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Transcript } from "@/lib/engine/types";
 import { deriveState, stepDelay, totalSteps } from "@/lib/replay";
 import { ROLE_META, cn, modelLabel } from "@/lib/ui";
+import { playCue, SoundCue } from "@/lib/sound";
+import { GameEvent } from "@/lib/engine/types";
 import GameTable from "./GameTable";
 import EventFeed from "./EventFeed";
 
 const SPEEDS = [1, 2, 4] as const;
+
+function cueFor(ev: GameEvent): SoundCue | null {
+  switch (ev.kind) {
+    case "phase":
+      return ev.phase === "night" ? "night" : "day";
+    case "seer_check":
+      return "seer";
+    case "saved":
+      return "save";
+    case "accusation":
+      return "accuse";
+    case "vote":
+      return "vote";
+    case "hunter_shot":
+      return "kill";
+    case "death":
+      return ev.cause === "vote" ? "gavel" : "kill";
+    case "game_over":
+      return ev.winner === "good" ? "win_village" : ev.winner === "evil" ? "win_wolves" : "win_jester";
+    default:
+      return null;
+  }
+}
 
 export default function ReplayPlayer({ transcript }: { transcript: Transcript }) {
   const total = totalSteps(transcript);
@@ -32,6 +57,27 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
     const t = setTimeout(() => setStep((s) => Math.min(s + 1, total)), stepDelay(transcript, step, speed));
     return () => clearTimeout(t);
   }, [playing, step, speed, total, transcript]);
+
+  // Drive the cinematic scene palette (moonlit night / lantern day) from the
+  // current phase, and fire a synthesized sound cue for the current event.
+  useEffect(() => {
+    const p = state.phase;
+    document.documentElement.dataset.phase = p === "day" ? "day" : p === "over" ? "over" : "night";
+  }, [state.phase]);
+
+  useEffect(() => {
+    return () => {
+      document.documentElement.dataset.phase = "night";
+    };
+  }, []);
+
+  useEffect(() => {
+    const ev = transcript.events[step];
+    if (ev) {
+      const cue = cueFor(ev);
+      if (cue) playCue(cue);
+    }
+  }, [step, transcript]);
 
   const seek = useCallback(
     (next: number) => {
@@ -124,7 +170,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
 
       {/* main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
-        <div className="card p-4 sm:p-6">
+        <div className="glass p-4 sm:p-6">
           <GameTable
             seats={state.seats}
             highlight={state.highlight}

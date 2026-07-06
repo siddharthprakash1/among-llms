@@ -14,6 +14,26 @@
   --good: #5cc8b0;
   --evil: #e0556b;
   --moon: #8ea2ff;
+
+  /* Cinematic scene ambience — cross-faded by phase. Night by default. */
+  --amb-1: #131a33;
+  --amb-2: #0a0d1c;
+  --amb-glow: rgba(142, 162, 255, 0.16);
+  --amb-accent: var(--moon);
+}
+
+/* Day: warm lantern amber dusk. Night: cold moonlit blue. */
+[data-phase="day"] {
+  --amb-1: #2a2033;
+  --amb-2: #171019;
+  --amb-glow: rgba(231, 185, 78, 0.16);
+  --amb-accent: var(--gold);
+}
+[data-phase="over"] {
+  --amb-1: #1a1226;
+  --amb-2: #0a0710;
+  --amb-glow: rgba(231, 185, 78, 0.1);
+  --amb-accent: var(--gold);
 }
 
 @theme inline {
@@ -60,6 +80,14 @@ body {
 
 .card {
   background: linear-gradient(180deg, var(--panel) 0%, var(--bg-soft) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* Frosted-glass panel that floats over the cinematic scene. */
+.glass {
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--border);
   border-radius: 16px;
 }
@@ -130,6 +158,11 @@ body {
   border-color: color-mix(in srgb, var(--gold) 40%, transparent);
   background: color-mix(in srgb, var(--gold) 12%, transparent);
 }
+.tag-neutral {
+  color: #d9a3ff;
+  border-color: color-mix(in srgb, #d9a3ff 40%, transparent);
+  background: color-mix(in srgb, #d9a3ff 12%, transparent);
+}
 
 .link {
   color: var(--muted);
@@ -147,6 +180,8 @@ body {
   background: var(--border);
   border-radius: 8px;
 }
+
+/* ---- cinematic animations ---- */
 
 @keyframes pulse-ring {
   0% {
@@ -172,4 +207,56 @@ body {
 }
 .float-in {
   animation: float-in 0.35s ease both;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+
+@keyframes drift {
+  from { transform: translateX(-8%); }
+  to { transform: translateX(8%); }
+}
+
+@keyframes moon-breathe {
+  0%, 100% { opacity: 0.7; filter: blur(2px); }
+  50% { opacity: 1; filter: blur(0.5px); }
+}
+
+@keyframes death-flash {
+  0% { box-shadow: 0 0 0 0 var(--blood); }
+  30% { box-shadow: 0 0 40px 6px var(--blood); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.fx-death {
+  animation: death-flash 0.9s ease-out;
+}
+
+@keyframes shield-shimmer {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 70%, transparent); }
+  50% { box-shadow: 0 0 26px 4px color-mix(in srgb, var(--good) 60%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.fx-shield {
+  animation: shield-shimmer 1.2s ease-out;
+}
+
+@keyframes scene-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.scene-fade {
+  animation: scene-fade 0.8s ease both;
+}
+
+/* respect reduced-motion: kill ambient loops */
+@media (prefers-reduced-motion: reduce) {
+  .ring-speaking,
+  .float-in,
+  .fx-death,
+  .fx-shield,
+  [data-ambient] * {
+    animation: none !important;
+  }
 }

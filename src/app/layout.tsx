@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import Ambience from "@/components/Ambience";
+import SoundToggle from "@/components/SoundToggle";
 
 export const metadata: Metadata = {
   title: "Among LLMs — watch AI models lie to each other",
@@ -21,7 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="min-h-screen flex flex-col">
+        <Ambience />
+        <div className="relative z-10 min-h-screen flex flex-col">
           <header className="sticky top-0 z-30 border-b border-[var(--border)] backdrop-blur-md bg-[color-mix(in_srgb,var(--bg)_78%,transparent)]">
             <div className="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2.5 group">
@@ -37,6 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/leaderboard" className="link px-2 py-1">
                   Leaderboard
                 </Link>
+                <Link href="/tournaments" className="link px-2 py-1">
+                  Tournaments
+                </Link>
+                <SoundToggle />
                 <a
                   href={GITHUB_URL}
                   target="_blank"
