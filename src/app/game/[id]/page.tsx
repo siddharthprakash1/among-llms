@@ -1,8 +1,6 @@
-import { notFound } from "next/navigation";
 import ReplayPlayer from "@/components/ReplayPlayer";
 import LiveGame from "@/components/LiveGame";
 import { getGame } from "@/lib/games";
-import { getLive } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +8,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const transcript = await getGame(id);
   if (transcript) return <ReplayPlayer transcript={transcript} />;
-  // Not persisted yet — if it's a live (running or just-finished) game, stream it.
-  if (getLive(id)) return <LiveGame id={id} />;
-  notFound();
+  // Not persisted — it may be a running (or just-finished) live game. The SSE
+  // route handler owns the in-process live registry (Next renders RSC pages in a
+  // separate module context, so the page can't read it reliably); let the client
+  // connect and resolve live vs. not-found itself.
+  return <LiveGame id={id} />;
 }

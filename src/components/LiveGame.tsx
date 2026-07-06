@@ -25,11 +25,22 @@ export default function LiveGame({ id }: { id: string }) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [done, setDone] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const seenCue = useRef(-1);
 
   useEffect(() => {
     const es = new EventSource(`/api/games/${id}/stream`);
+    let gotMeta = false;
+    // If no meta arrives quickly, the game doesn't exist (or already scrolled
+    // out of the live registry) — show a not-found state instead of spinning.
+    const timeout = setTimeout(() => {
+      if (!gotMeta) {
+        setNotFound(true);
+        es.close();
+      }
+    }, 5000);
     es.addEventListener("meta", (e) => {
+      gotMeta = true;
       try {
         setMeta(JSON.parse((e as MessageEvent).data));
       } catch {
@@ -48,7 +59,10 @@ export default function LiveGame({ id }: { id: string }) {
         /* ignore */
       }
     };
-    return () => es.close();
+    return () => {
+      clearTimeout(timeout);
+      es.close();
+    };
   }, [id]);
 
   const transcript = useMemo<Transcript | null>(() => {
@@ -91,6 +105,20 @@ export default function LiveGame({ id }: { id: string }) {
         playCue(ev.winner === "good" ? "win_village" : ev.winner === "evil" ? "win_wolves" : "win_jester");
     }
   }, [events]);
+
+  if (notFound) {
+    return (
+      <div className="glass p-12 text-center space-y-3">
+        <div className="display text-2xl">Game not found</div>
+        <div className="text-sm text-[var(--muted)]">
+          This match doesn&apos;t exist or has already scrolled out of the live buffer.
+        </div>
+        <Link href="/" className="btn btn-primary">
+          Back to the arena
+        </Link>
+      </div>
+    );
+  }
 
   if (!state || !meta) {
     return (
