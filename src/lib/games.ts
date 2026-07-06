@@ -2,7 +2,7 @@
 // This is the seam the API routes call.
 
 import { randomUUID } from "node:crypto";
-import { GameConfig, Transcript } from "./engine/types";
+import { GameConfig, ToggleableRole, Transcript } from "./engine/types";
 import { simulate } from "./engine/werewolf";
 import { MAX_PLAYERS, MIN_PLAYERS } from "./engine/roles";
 import { buildBrainFactory } from "./agents/brains";
@@ -14,6 +14,7 @@ export interface CreateGameInput {
   numPlayers?: number;
   seatModels?: string[];
   seed?: number;
+  disabledRoles?: string[];
 }
 
 function clampPlayers(n: number): number {
@@ -41,7 +42,11 @@ export function buildConfig(input: CreateGameInput): GameConfig {
     input.seed !== undefined && Number.isFinite(input.seed)
       ? Math.trunc(input.seed) >>> 0
       : Math.floor(Math.random() * 0xffffffff) >>> 0;
-  return { numPlayers, seatModels, seed };
+  const TOGGLEABLE: ToggleableRole[] = ["hunter", "witch", "jester"];
+  const disabledRoles = (input.disabledRoles ?? []).filter((r): r is ToggleableRole =>
+    (TOGGLEABLE as string[]).includes(r)
+  );
+  return { numPlayers, seatModels, seed, ...(disabledRoles.length ? { disabledRoles } : {}) };
 }
 
 export async function createGame(input: CreateGameInput): Promise<Transcript> {

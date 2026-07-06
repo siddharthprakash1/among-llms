@@ -87,7 +87,11 @@ export default async function HomePage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="display text-lg">
-                    {g.winner === "good" ? "🏡 Village won" : "🐺 Wolves won"}
+                    {g.winner === "good"
+                      ? "🏡 Village won"
+                      : g.winner === "evil"
+                        ? "🐺 Wolves won"
+                        : "🃏 Jester won"}
                   </span>
                   <span className="text-xs text-[var(--muted)]">{relativeTime(g.createdAt)}</span>
                 </div>

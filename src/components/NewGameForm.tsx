@@ -6,12 +6,22 @@ import { ModelInfo } from "@/lib/agents/registry";
 import { cn, modelLabel } from "@/lib/ui";
 
 const SIZES = [5, 6, 7, 8, 9, 10, 11, 12];
+const SPECIAL_ROLES = [
+  { id: "hunter", label: "🏹 Hunter" },
+  { id: "witch", label: "🧪 Witch" },
+  { id: "jester", label: "🃏 Jester" },
+];
 
 export default function NewGameForm() {
   const router = useRouter();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selected, setSelected] = useState<string[]>(["mock"]);
   const [numPlayers, setNumPlayers] = useState(7);
+  const [specials, setSpecials] = useState<Record<string, boolean>>({
+    hunter: true,
+    witch: true,
+    jester: true,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,14 +42,19 @@ export default function NewGameForm() {
     });
   };
 
+  const toggleSpecial = (role: string) => {
+    setSpecials((cur) => ({ ...cur, [role]: !cur[role] }));
+  };
+
   const run = async () => {
     setLoading(true);
     setError(null);
     try {
+      const disabledRoles = Object.keys(specials).filter((r) => !specials[r]);
       const res = await fetch("/api/games", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ numPlayers, seatModels: selected }),
+        body: JSON.stringify({ numPlayers, seatModels: selected, disabledRoles }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to start match");
@@ -107,6 +122,31 @@ export default function NewGameForm() {
             or Llama.
           </p>
         )}
+      </div>
+
+      <div>
+        <div className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-2">
+          Special roles
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SPECIAL_ROLES.map((role) => (
+            <button
+              key={role.id}
+              onClick={() => toggleSpecial(role.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+                specials[role.id]
+                  ? "bg-[var(--panel-2)] border-[var(--gold)] text-[var(--gold)]"
+                  : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+              )}
+            >
+              {role.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
+          Hunter joins at 6+, Witch at 8+, Jester at 9+ players.
+        </p>
       </div>
 
       {error && <div className="text-sm text-[var(--blood)]">{error}</div>}
