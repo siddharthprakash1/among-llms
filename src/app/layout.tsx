@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 const GITHUB_URL =
-  process.env.NEXT_PUBLIC_GITHUB_URL || "https://github.com/your-name/among-llms";
+  process.env.NEXT_PUBLIC_GITHUB_URL || "https://github.com/siddharthprakash1/among-llms";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
