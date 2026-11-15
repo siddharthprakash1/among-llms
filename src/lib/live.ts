@@ -3,7 +3,7 @@
 // Local-first: this lives in the Node server process (dev / next start). If the
 // process dies mid-game the game is abandoned (never persisted, never rated).
 
-import { GameConfig, GameEvent, Player } from "./engine/types";
+import { DecisionRecord, GameConfig, GameEvent, Player } from "./engine/types";
 
 export type LiveStatus = "running" | "finished" | "abandoned";
 
@@ -13,6 +13,8 @@ export interface LiveGame {
   config: GameConfig;
   players: Player[];
   events: GameEvent[]; // replay buffer (index === event id)
+  /** Reasoning sidecar; no listeners, since each record is flushed with the event it precedes. */
+  decisions: DecisionRecord[];
   status: LiveStatus;
   listeners: Set<(event: GameEvent, index: number) => void>;
 }
@@ -38,6 +40,7 @@ export function createLive(
     config,
     players,
     events: [],
+    decisions: [],
     status: "running",
     listeners: new Set(),
   };
@@ -63,6 +66,50 @@ export function pushLive(id: string, event: GameEvent, index: number): void {
   if (!game) return;
   game.events[index] = event;
   for (const l of game.listeners) l(event, index);
+}
+
+export function pushLiveDecision(id: string, record: DecisionRecord): void {
+  const game = registry.get(id);
+  if (!game) return;
+  (game.decisions ??= []).push(record); // ??= tolerates objects that survived dev HMR
+}
+
+/**
+ * Decisions the stream should send immediately before event `index`.
+ * `cursor` is the caller's position in `decisions`. Records anchored at or before
+ * `lastId` were delivered on an earlier connection and are skipped.
+ */
+export function decisionsThrough(
+  decisions: DecisionRecord[],
+  cursor: number,
+  index: number,
+  lastId: number
+): { send: DecisionRecord[]; cursor: number } {
+  const send: DecisionRecord[] = [];
+  while (cursor < decisions.length && decisions[cursor].step <= index) {
+    if (decisions[cursor].step > lastId) send.push(decisions[cursor]);
+    cursor++;
+  }
+  return { send, cursor };
+}
+
+/** Decisions still buffered once the event stream is exhausted (an abandoned game's last passes). */
+export function decisionsRemaining(
+  decisions: DecisionRecord[],
+  cursor: number,
+  lastId: number
+): { send: DecisionRecord[]; cursor: number } {
+  return decisionsThrough(decisions, cursor, Number.MAX_SAFE_INTEGER, lastId);
+}
+
+/**
+ * Last-Event-ID as an event index; -1 (send everything) when absent or malformed.
+ * A NaN here would make every `index > lastId` test false and hang the stream.
+ */
+export function parseLastEventId(header: string | null): number {
+  if (header === null || !/^\d+$/.test(header.trim())) return -1;
+  const n = Number(header.trim());
+  return Number.isSafeInteger(n) ? n : -1;
 }
 
 export function finishLive(id: string, status: LiveStatus): void {

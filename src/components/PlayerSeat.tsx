@@ -8,15 +8,17 @@ interface Props {
   seat: ReplaySeat;
   highlight: Highlight;
   showRole: boolean;
+  thinkingId?: number;
   style?: React.CSSProperties;
 }
 
-export default function PlayerSeat({ seat, highlight, showRole, style }: Props) {
+export default function PlayerSeat({ seat, highlight, showRole, thinkingId, style }: Props) {
   const speaking = highlight.speakingId === seat.id;
   const killed = highlight.killId === seat.id;
   const saved = highlight.saveId === seat.id;
   const checked = highlight.checkId === seat.id;
   const eliminated = highlight.eliminatedId === seat.id;
+  const thinking = thinkingId === seat.id;
   const reveal = showRole || seat.revealed;
   const meta = ROLE_META[seat.role];
 
@@ -30,6 +32,8 @@ export default function PlayerSeat({ seat, highlight, showRole, style }: Props) 
     ? "var(--good)"
     : checked
     ? "var(--moon)"
+    : thinking
+    ? "var(--mind)"
     : reveal
     ? meta.align === "evil"
       ? "color-mix(in srgb, var(--evil) 65%, transparent)"
@@ -43,31 +47,43 @@ export default function PlayerSeat({ seat, highlight, showRole, style }: Props) 
       style={style}
       className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-[88px]"
     >
-      <motion.div
-        animate={{
-          scale: speaking ? 1.08 : 1,
-          opacity: seat.alive ? 1 : 0.4,
-        }}
-        transition={{ type: "spring", stiffness: 300, damping: 22 }}
-        className={cn(
-          "relative grid place-items-center rounded-full w-[58px] h-[58px] text-[28px] bg-[var(--panel-2)]",
-          speaking && "ring-speaking"
-        )}
-        style={{ border: `2.5px solid ${ringColor}` }}
-      >
-        <span className={cn(!seat.alive && "grayscale")}>{seat.avatar}</span>
-        {!seat.alive && (
-          <span className="absolute inset-0 grid place-items-center text-[26px]">💀</span>
-        )}
-        {reveal && (
+      <div className="relative">
+        <motion.div
+          animate={{
+            scale: speaking ? 1.08 : 1,
+            opacity: seat.alive ? 1 : 0.4,
+          }}
+          transition={{ type: "spring", stiffness: 300, damping: 22 }}
+          className={cn(
+            "relative grid place-items-center rounded-full w-[58px] h-[58px] text-[28px] bg-[var(--panel-2)]",
+            speaking && "ring-speaking"
+          )}
+          style={{ border: `2.5px solid ${ringColor}` }}
+        >
+          <span className={cn(!seat.alive && "grayscale")}>{seat.avatar}</span>
+          {!seat.alive && (
+            <span className="absolute inset-0 grid place-items-center text-[26px]">💀</span>
+          )}
+          {reveal && (
+            <span
+              title={meta.label}
+              className="absolute -bottom-1.5 -right-1.5 text-[15px] bg-[var(--bg)] rounded-full w-[24px] h-[24px] grid place-items-center border border-[var(--border)]"
+            >
+              {meta.emoji}
+            </span>
+          )}
+        </motion.div>
+        {/* Outside the motion.div: a dead seat's 0.4 opacity must not dim the badge. */}
+        {thinking && (
           <span
-            title={meta.label}
-            className="absolute -bottom-1.5 -right-1.5 text-[15px] bg-[var(--bg)] rounded-full w-[24px] h-[24px] grid place-items-center border border-[var(--border)]"
+            title="Deciding"
+            className="absolute -top-1.5 -left-1.5 text-[13px] bg-[var(--bg)] rounded-full w-[22px] h-[22px] grid place-items-center border"
+            style={{ borderColor: "var(--mind)" }}
           >
-            {meta.emoji}
+            💭
           </span>
         )}
-      </motion.div>
+        </div>
       <div className="mt-1.5 text-center leading-tight">
         <div className={cn("text-[13px] font-semibold", !seat.alive && "line-through opacity-60")}>
           {seat.name}

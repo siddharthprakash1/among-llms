@@ -1,15 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Transcript } from "@/lib/engine/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DecisionRecord, Transcript } from "@/lib/engine/types";
 import { deriveState, stepDelay, totalSteps } from "@/lib/replay";
-import { ROLE_META, cn, modelLabel } from "@/lib/ui";
+import {
+  countLabel,
+  decisionShortcut,
+  inspect,
+  inspectorDwell,
+  provenanceSummary,
+  thinkingSeat,
+} from "@/lib/inspector";
+import { ROLE_META, cn, modelLabel, pct } from "@/lib/ui";
 import { playCue, SoundCue } from "@/lib/sound";
 import { GameEvent } from "@/lib/engine/types";
 import dynamic from "next/dynamic";
 import GameTable from "./GameTable";
 import EventFeed from "./EventFeed";
+import MindInspector, { useRevealOnOpen } from "./MindInspector";
 
 // The 3D stage is heavy and WebGL-only, so load it lazily on the client.
 const Scene3D = dynamic(() => import("./Scene3D"), {
@@ -22,6 +31,9 @@ const Scene3D = dynamic(() => import("./Scene3D"), {
 });
 
 const SPEEDS = [1, 2, 4] as const;
+
+// Stable identity, so a legacy transcript does not defeat the inspector memo.
+const NO_DECISIONS: DecisionRecord[] = [];
 
 function cueFor(ev: GameEvent): SoundCue | null {
   switch (ev.kind) {
@@ -56,9 +68,21 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
   const [view, setView] = useState<"classic" | "cinema">("classic");
   const [can3d, setCan3d] = useState(false);
 
+  const decisions = transcript.decisions ?? NO_DECISIONS;
+  const canInspect = decisions.length > 0;
+  const [minds, setMinds] = useState(false);
+  const [focusSeq, setFocusSeq] = useState<number | null>(null);
+  const inspectorRef = useRevealOnOpen(minds);
+  const mindsBtnRef = useRef<HTMLButtonElement>(null);
+  // Private reasoning gives the roles away, so Minds implies god view.
+  const spoil = godView || minds;
+  const model = useMemo(() => inspect(decisions, step, focusSeq), [decisions, step, focusSeq]);
+  const thinkingId = thinkingSeat(model, minds);
+  const current = model.current;
+
   const state = useMemo(
-    () => deriveState(transcript, step, { revealPrivate: godView || step >= total }),
-    [transcript, step, godView, total]
+    () => deriveState(transcript, step, { revealPrivate: spoil || step >= total }),
+    [transcript, step, spoil, total]
   );
 
   useEffect(() => {
@@ -67,9 +91,11 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
       setPlaying(false);
       return;
     }
-    const t = setTimeout(() => setStep((s) => Math.min(s + 1, total)), stepDelay(transcript, step, speed));
+    const base = stepDelay(transcript, step, speed);
+    const delay = minds ? inspectorDwell(base, current, speed) : base;
+    const t = setTimeout(() => setStep((s) => Math.min(s + 1, total)), delay);
     return () => clearTimeout(t);
-  }, [playing, step, speed, total, transcript]);
+  }, [playing, step, speed, total, transcript, minds, current]);
 
   // Drive the cinematic scene palette (moonlit night / lantern day) from the
   // current phase, and fire a synthesized sound cue for the current event.
@@ -110,15 +136,41 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
   const seek = useCallback(
     (next: number) => {
       setPlaying(false);
+      setFocusSeq(null);
       setStep(Math.max(0, Math.min(next, total)));
     },
     [total]
   );
 
   const restart = useCallback(() => {
+    setFocusSeq(null);
     setStep(0);
     setPlaying(true);
   }, []);
+
+  const jump = useCallback((rec: DecisionRecord) => {
+    setPlaying(false);
+    setStep(rec.step);
+    setFocusSeq(rec.seq);
+  }, []);
+
+  const prevDecision = model.prev;
+  const nextDecision = model.next;
+  useEffect(() => {
+    if (!minds) return;
+    const onKey = (e: KeyboardEvent) => {
+      const dir = decisionShortcut(e);
+      if (dir === "prev" && prevDecision) jump(prevDecision);
+      else if (dir === "next" && nextDecision) jump(nextDecision);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [minds, prevDecision, nextDecision, jump]);
+
+  const health = useMemo(
+    () => (canInspect ? provenanceSummary(decisions, transcript.players) : []),
+    [canInspect, decisions, transcript.players]
+  );
 
   const togglePlay = useCallback(() => {
     if (step >= total) {
@@ -206,8 +258,9 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
                 highlight={state.highlight}
                 phase={state.phase}
                 finished={state.finished}
-                showRole={godView || state.finished}
+                showRole={spoil || state.finished}
                 playing={playing}
+                thinkingId={thinkingId}
               />
               {state.banner && (
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none px-4">
@@ -228,13 +281,34 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
                 banner={state.banner}
                 phase={state.phase}
                 day={state.day}
-                showRole={godView || state.finished}
+                showRole={spoil || state.finished}
+                thinkingId={thinkingId}
               />
             </div>
           )}
         </div>
-        <div className="h-[460px] lg:h-auto lg:min-h-[560px]">
-          <EventFeed log={state.log} seats={state.seats} />
+        <div className="lg:relative lg:min-h-[560px]">
+          <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
+            {minds && (
+              // Fixed height, not a cap: a content-sized card resizes on every step
+              // and drags the feed (and, on phones, the controls) up and down with it.
+              <div ref={inspectorRef} className="shrink-0 h-[400px] lg:h-[68%] flex scroll-mt-20">
+                <MindInspector
+                  model={model}
+                  players={transcript.players}
+                  event={model.current ? transcript.events[model.current.step] : undefined}
+                  onJump={jump}
+                  onClose={() => {
+                    setMinds(false);
+                    mindsBtnRef.current?.focus();
+                  }}
+                />
+              </div>
+            )}
+            <div className="h-[460px] lg:h-auto lg:flex-1 lg:min-h-0">
+              <EventFeed log={state.log} seats={state.seats} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -284,11 +358,27 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
           </button>
         )}
         <button
-          className={cn("btn btn-ghost px-3", godView && "!text-[var(--gold)]")}
+          className={cn("btn btn-ghost px-3", spoil && "!text-[var(--gold)]")}
           onClick={() => setGodView((g) => !g)}
-          title="Reveal all roles"
+          disabled={minds}
+          aria-pressed={spoil}
+          title={minds ? "Minds reveals all roles" : "Reveal all roles"}
         >
-          {godView ? "👁 Roles shown" : "🙈 Hide roles"}
+          {spoil ? "👁 Roles shown" : "🙈 Hide roles"}
+        </button>
+        <button
+          ref={mindsBtnRef}
+          className={cn("btn btn-ghost px-3", minds && "!text-[var(--mind)]")}
+          onClick={() => setMinds((m) => !m)}
+          disabled={!canInspect}
+          aria-pressed={minds}
+          title={
+            canInspect
+              ? "Show each player's private reasoning (spoilers: reveals all roles)"
+              : "Recorded before reasoning capture"
+          }
+        >
+          🧠 Minds
         </button>
       </div>
 
@@ -324,6 +414,36 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
               );
             })}
           </div>
+
+          {canInspect && (
+            <div className="mt-5 pt-4 border-t border-[var(--border)]">
+              <div className="display text-lg mb-2.5">Decision health</div>
+              <div className="space-y-2">
+                {health.map((h) => {
+                  const bot = h.own + h.fallbacks === 0;
+                  const reasons = Object.entries(h.byReason)
+                    .map(([reason, n]) => `${reason} × ${n}`)
+                    .join(" · ");
+                  return (
+                    <div
+                      key={h.model}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-[var(--muted)] tabular-nums"
+                    >
+                      <span className="chip tag-gold">{modelLabel(h.model)}</span>
+                      <span>{countLabel(h.decisions, "decision")}</span>
+                      <span>{bot ? "heuristic bot" : `${pct(h.own / h.decisions)} own`}</span>
+                      <span className={cn(h.fallbacks > 0 && "text-[var(--gold)] font-semibold")}>
+                        {countLabel(h.fallbacks, "fallback")}
+                        {reasons && <span className="font-normal"> ({reasons})</span>}
+                      </span>
+                      <span>{countLabel(h.overridden, "engine override")}</span>
+                      {h.avgLatencyMs !== null && <span>avg {(h.avgLatencyMs / 1000).toFixed(1)}s</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

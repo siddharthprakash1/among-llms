@@ -7,6 +7,8 @@ import {
   AccuseDecision,
   AccusationRecord,
   Brain,
+  DecisionTrace,
+  FallbackReason,
   NightDecision,
   PlayerView,
   VoteDecision,
@@ -18,9 +20,10 @@ import {
   SYSTEM_PROMPT,
   accusePrompt,
   defendPrompt,
+  extractJson,
   hunterPrompt,
   nightPrompt,
-  parseStatementResponse,
+  parseReasoning,
   parseTargetResponse,
   parseTextResponse,
   parseWitchResponse,
@@ -31,7 +34,11 @@ import {
 } from "./prompts";
 
 const REQUEST_TIMEOUT_MS = 45_000;
-const MAX_TOKENS = 320;
+// Headroom for the private reasoning field: a truncated JSON object fails to
+// parse and forces a fallback.
+const MAX_TOKENS = 512;
+// Public speech is only ever read from a named JSON key, never from raw text.
+const STRICT = { allowRaw: false } as const;
 
 export class LlmBrain implements Brain {
   readonly id: string;
@@ -102,84 +109,139 @@ export class LlmBrain implements Brain {
     }
   }
 
-  async nightAction(view: PlayerView): Promise<NightDecision> {
+  /**
+   * One decision: ask the model, parse, and on any failure let the heuristic
+   * answer. Stamps provenance on the trace either way.
+   */
+  private async decide<T>(
+    trace: DecisionTrace | undefined,
+    prompt: () => string, // thunk: a throw while building the prompt must fall back too
+    parse: (text: string) => T | null, // null ⇒ unusable ⇒ fallback
+    fallback: (trace: DecisionTrace) => Promise<T>
+  ): Promise<T> {
+    const out = trace ?? {};
+    // Wall-clock is fine here: this is the agents layer, not the engine.
+    const started = Date.now();
+    let reason: FallbackReason;
+    try {
+      const text = await this.chat(SYSTEM_PROMPT, prompt());
+      const value = parse(text);
+      if (value !== null) {
+        out.source = "model";
+        out.reasoning = parseReasoning(text);
+        out.latencyMs = Date.now() - started;
+        return value;
+      }
+      reason = extractJson(text) === null ? "parse" : "invalid";
+    } catch (err) {
+      const e = err as Error;
+      reason =
+        e?.name === "AbortError"
+          ? "timeout"
+          : /^(Anthropic|OpenAI-compatible) \d+/.test(e?.message ?? "")
+          ? "http"
+          : "error";
+    }
+    // The reasoning shown is the heuristic's (why the substitute move was made),
+    // never the model's partial text.
+    const value = await fallback(out);
+    out.source = "fallback";
+    out.fallbackReason = reason;
+    out.latencyMs = Date.now() - started;
+    return value;
+  }
+
+  async nightAction(view: PlayerView, trace?: DecisionTrace): Promise<NightDecision> {
     if (view.self.role === "villager") return { targetId: null };
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, nightPrompt(view));
-      const target = parseTargetResponse(text, view);
-      if (target === null) return this.fallback.nightAction(view);
-      return { targetId: target };
-    } catch {
-      return this.fallback.nightAction(view);
-    }
+    return this.decide<NightDecision>(
+      trace,
+      () => nightPrompt(view),
+      (text) => {
+        const t = parseTargetResponse(text, view);
+        return t === null ? null : { targetId: t };
+      },
+      (tr) => this.fallback.nightAction(view, tr)
+    );
   }
 
-  async dayStatement(view: PlayerView): Promise<string> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, statementPrompt(view));
-      const statement = parseStatementResponse(text);
-      if (!statement) return this.fallback.dayStatement(view);
-      return statement;
-    } catch {
-      return this.fallback.dayStatement(view);
-    }
+  async dayStatement(view: PlayerView, trace?: DecisionTrace): Promise<string> {
+    return this.decide(
+      trace,
+      () => statementPrompt(view),
+      (text) => parseTextResponse(text, ["statement"], STRICT),
+      (tr) => this.fallback.dayStatement(view, tr)
+    );
   }
 
-  async dayVote(view: PlayerView): Promise<VoteDecision> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, votePrompt(view));
-      const target = parseTargetResponse(text, view);
-      if (target === null) return this.fallback.dayVote(view);
-      return { targetId: target };
-    } catch {
-      return this.fallback.dayVote(view);
-    }
+  async dayVote(view: PlayerView, trace?: DecisionTrace): Promise<VoteDecision> {
+    return this.decide<VoteDecision>(
+      trace,
+      () => votePrompt(view),
+      (text) => {
+        const t = parseTargetResponse(text, view);
+        return t === null ? null : { targetId: t };
+      },
+      (tr) => this.fallback.dayVote(view, tr)
+    );
   }
 
-  async wolfChat(view: PlayerView, round: number): Promise<string> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, wolfChatPrompt(view, round));
-      return parseTextResponse(text, ["message", "statement"]) ?? this.fallback.wolfChat(view, round);
-    } catch {
-      return this.fallback.wolfChat(view, round);
-    }
+  async wolfChat(view: PlayerView, round: number, trace?: DecisionTrace): Promise<string> {
+    return this.decide(
+      trace,
+      () => wolfChatPrompt(view, round),
+      (text) => parseTextResponse(text, ["message", "statement"], STRICT),
+      (tr) => this.fallback.wolfChat(view, round, tr)
+    );
   }
 
-  async accuse(view: PlayerView): Promise<AccuseDecision> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, accusePrompt(view));
-      return { targetId: parseTargetResponse(text, view), text: parseTextResponse(text, ["reason"]) ?? undefined };
-    } catch {
-      return this.fallback.accuse(view);
-    }
+  async accuse(view: PlayerView, trace?: DecisionTrace): Promise<AccuseDecision> {
+    return this.decide<AccuseDecision>(
+      trace,
+      () => accusePrompt(view),
+      (text) =>
+        extractJson(text) === null
+          ? null
+          : {
+              targetId: parseTargetResponse(text, view),
+              // Only "accusation" is ever spoken: a stray "reason" key may be an
+              // abbreviated private "reasoning" and must not reach the table.
+              text: parseTextResponse(text, ["accusation"], STRICT) ?? undefined,
+            },
+      (tr) => this.fallback.accuse(view, tr)
+    );
   }
 
-  async defend(view: PlayerView, against: AccusationRecord[]): Promise<string> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, defendPrompt(view, against));
-      return parseTextResponse(text, ["statement"]) ?? this.fallback.defend(view, against);
-    } catch {
-      return this.fallback.defend(view, against);
-    }
+  async defend(view: PlayerView, against: AccusationRecord[], trace?: DecisionTrace): Promise<string> {
+    return this.decide(
+      trace,
+      () => defendPrompt(view, against),
+      (text) => parseTextResponse(text, ["statement"], STRICT),
+      (tr) => this.fallback.defend(view, against, tr)
+    );
   }
 
-  async witchAction(view: PlayerView, wolfTargetId: number | null): Promise<WitchDecision> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, witchPrompt(view, wolfTargetId));
-      return parseWitchResponse(text, view) ?? this.fallback.witchAction(view, wolfTargetId);
-    } catch {
-      return this.fallback.witchAction(view, wolfTargetId);
-    }
+  async witchAction(
+    view: PlayerView,
+    wolfTargetId: number | null,
+    trace?: DecisionTrace
+  ): Promise<WitchDecision> {
+    return this.decide(
+      trace,
+      () => witchPrompt(view, wolfTargetId),
+      (text) => parseWitchResponse(text, view),
+      (tr) => this.fallback.witchAction(view, wolfTargetId, tr)
+    );
   }
 
-  async hunterShot(view: PlayerView): Promise<{ targetId: number | null }> {
-    try {
-      const text = await this.chat(SYSTEM_PROMPT, hunterPrompt(view));
-      const target = parseTargetResponse(text, view);
-      if (target === null) return this.fallback.hunterShot(view);
-      return { targetId: target };
-    } catch {
-      return this.fallback.hunterShot(view);
-    }
+  async hunterShot(view: PlayerView, trace?: DecisionTrace): Promise<{ targetId: number | null }> {
+    return this.decide<{ targetId: number | null }>(
+      trace,
+      () => hunterPrompt(view),
+      (text) => {
+        const t = parseTargetResponse(text, view);
+        return t === null ? null : { targetId: t };
+      },
+      (tr) => this.fallback.hunterShot(view, tr)
+    );
   }
 }

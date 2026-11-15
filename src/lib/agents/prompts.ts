@@ -131,8 +131,13 @@ export const SYSTEM_PROMPT = [
   "Village side (Villager/Seer/Doctor): your goal is to find and vote out every werewolf. A credible Seer claim that names a wolf is the strongest evidence in the game — rally the vote behind it. Track who defends whom and who keeps voting together.",
   "Seer: once you've confirmed a wolf, revealing it out loud can win the game for the village — but you'll be hunted at night, so time it well.",
   "Werewolves: your goal is to survive until wolves equal the villagers. Blend in, cast believable doubt on villagers, protect your packmates without being obvious, and never reveal who your fellow wolves are.",
+  'Every reply includes a private "reasoning" field: your honest thinking in at most 40 words. It is never shown to any other player.',
   "Be concise and in-character. Respond with ONLY the requested JSON object — no markdown, no text outside the JSON.",
 ].join("\n");
+
+// First key of every response format, so the model thinks before committing.
+const PRIVATE_REASONING =
+  '"reasoning": "<PRIVATE, max 40 words: what you really think and why. Only spectators ever see this — never another player.>"';
 
 export function nightPrompt(view: PlayerView): string {
   const legal =
@@ -152,7 +157,7 @@ export function nightPrompt(view: PlayerView): string {
     "",
     `It is NIGHT ${view.day}. Choose ONE player to ${verb}.`,
     `Legal target seat ids: [${legal.join(", ")}].`,
-    'Respond as JSON: {"target": <seat id number>, "reason": "<one short sentence>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "target": <seat id number>}`,
   ].join("\n");
 }
 
@@ -161,7 +166,7 @@ export function statementPrompt(view: PlayerView): string {
     buildContext(view),
     "",
     `It is DAY ${view.day}, open discussion. Say ONE short, persuasive thing to the table (1–2 sentences). Stay in character for your role and team.`,
-    'Respond as JSON: {"statement": "<your words>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "statement": "<your words to the table>"}`,
   ].join("\n");
 }
 
@@ -172,7 +177,7 @@ export function votePrompt(view: PlayerView): string {
     "",
     `It is DAY ${view.day}, time to vote someone out. Vote to maximize your team's chance of winning.`,
     `Legal seat ids: [${legal.join(", ")}]. You may abstain with target null.`,
-    'Respond as JSON: {"target": <seat id number or null>, "reason": "<one short sentence>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "target": <seat id number or null>}`,
   ].join("\n");
 }
 
@@ -181,7 +186,7 @@ export function wolfChatPrompt(view: PlayerView, round: number): string {
     buildContext(view),
     "",
     `It is NIGHT ${view.day}. Private werewolf pack chat, round ${round} of 2. Coordinate the kill with your packmates in ONE short sentence.`,
-    'Respond as JSON: {"message": "<your message to the pack>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "message": "<your message to the pack>"}`,
   ].join("\n");
 }
 
@@ -192,7 +197,7 @@ export function accusePrompt(view: PlayerView): string {
     "",
     `It is DAY ${view.day}, formal accusation round. You may accuse ONE player (with a reason the table will hear) or pass.`,
     `Legal seat ids: [${legal.join(", ")}]. Pass with target null.`,
-    'Respond as JSON: {"target": <seat id or null>, "reason": "<one sharp sentence>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "target": <seat id or null>, "accusation": "<one sharp sentence the TABLE WILL HEAR>"}`,
   ].join("\n");
 }
 
@@ -204,7 +209,7 @@ export function defendPrompt(view: PlayerView, against: { from: number; text: st
     `It is DAY ${view.day}. You stand ACCUSED:`,
     lines,
     "Give ONE short, convincing rebuttal (1–2 sentences).",
-    'Respond as JSON: {"statement": "<your defense>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "statement": "<your defense>"}`,
   ].join("\n");
 }
 
@@ -220,7 +225,7 @@ export function witchPrompt(view: PlayerView, wolfTargetId: number | null): stri
     }`,
     `Potions left — heal: ${view.potions?.heal ? "YES" : "spent"}, poison: ${view.potions?.poison ? "YES" : "spent"}. At most ONE potion per night.`,
     `Legal poison targets: [${legal.join(", ")}].`,
-    'Respond as JSON: {"heal": true|false, "poison": <seat id or null>}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "heal": true|false, "poison": <seat id or null>}`,
   ].join("\n");
 }
 
@@ -231,13 +236,13 @@ export function hunterPrompt(view: PlayerView): string {
     "",
     `You have just been killed. As the HUNTER you fire one final shot NOW.`,
     `Legal targets: [${legal.join(", ")}].`,
-    'Respond as JSON: {"target": <seat id>, "reason": "<one short sentence>"}',
+    `Respond as JSON: {${PRIVATE_REASONING}, "target": <seat id number>}`,
   ].join("\n");
 }
 
 // --- parsing -------------------------------------------------------------
 
-function extractJson(text: string): unknown | null {
+export function extractJson(text: string): unknown | null {
   if (!text) return null;
   // Strip code fences if present.
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -279,7 +284,18 @@ export function parseStatementResponse(text: string): string | null {
   return parseTextResponse(text, ["statement"]);
 }
 
-export function parseTextResponse(text: string, keys: string[]): string | null {
+/** The private reasoning field, or undefined. Never falls back to raw text. */
+export function parseReasoning(text: string): string | undefined {
+  const obj = extractJson(text) as Record<string, unknown> | null;
+  const v = obj?.reasoning;
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+export function parseTextResponse(
+  text: string,
+  keys: string[],
+  opts: { allowRaw?: boolean } = {}
+): string | null {
   const obj = extractJson(text) as Record<string, unknown> | null;
   if (obj) {
     for (const key of keys) {
@@ -287,8 +303,12 @@ export function parseTextResponse(text: string, keys: string[]): string | null {
       if (typeof v === "string" && v.trim()) return v.trim();
     }
   }
+  // Strict mode: public speech must come from a named JSON key, never from raw text.
+  if (opts.allowRaw === false) return null;
+  // Every prompt solicits private reasoning first, so a raw reply that holds a
+  // brace (fenced/truncated JSON) or mentions "reasoning" may be private thinking.
   const raw = (text ?? "").trim();
-  if (raw && raw.length <= 400 && !raw.startsWith("{")) return raw;
+  if (raw && raw.length <= 400 && !raw.includes("{") && !/\breasoning\b/i.test(raw)) return raw;
   return null;
 }
 

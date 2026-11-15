@@ -22,6 +22,7 @@ interface Scene3DProps {
   finished: boolean;
   showRole: boolean;
   playing: boolean;
+  thinkingId?: number;
 }
 
 const TEAM_COLOR: Record<"good" | "evil" | "neutral", string> = {
@@ -72,11 +73,13 @@ function Pawn({
   pos,
   highlight,
   showRole,
+  thinking,
 }: {
   seat: ReplaySeat;
   pos: Vec3;
   highlight: Highlight;
   showRole: boolean;
+  thinking: boolean;
 }) {
   const reveal = showRole || seat.revealed;
   const meta = ROLE_META[seat.role];
@@ -134,27 +137,53 @@ function Pawn({
       </mesh>
       {/* floating nameplate / avatar */}
       <Html position={[0, 1.75, 0]} center distanceFactor={6} occlude={false} pointerEvents="none">
-        <div
-          style={{
-            textAlign: "center",
-            fontFamily: "Inter, sans-serif",
-            transform: `rotate(${seat.alive ? 0 : 90}deg)`,
-            opacity: seat.alive ? 1 : 0.6,
-            userSelect: "none",
-            width: 90,
-          }}
-        >
-          <div style={{ fontSize: 30, lineHeight: 1, filter: seat.alive ? "none" : "grayscale(1)" }}>
-            {seat.alive ? seat.avatar : "💀"}
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#ece9f5", textShadow: "0 1px 4px #000" }}>
-            {seat.name}
-          </div>
-          {reveal && (
-            <div style={{ fontSize: 11, color: "#9c98b8", textShadow: "0 1px 3px #000" }}>
-              {meta.emoji} {meta.label}
+        {/* The badge sits outside the rotated nameplate so it stays upright on a dead seat. */}
+        <div style={{ textAlign: "center", position: "relative" }}>
+          {/* Out of flow, so the centred nameplate does not shift when the badge comes and goes. */}
+          {thinking && (
+            <div
+              style={{
+                position: "absolute",
+                top: -24,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: 22,
+                height: 22,
+                display: "grid",
+                placeItems: "center",
+                fontSize: 13,
+                lineHeight: 1,
+                borderRadius: 999,
+                background: "#0a0a12",
+                border: "1px solid #b48cff",
+                boxShadow: "0 0 10px -2px #b48cff",
+              }}
+            >
+              💭
             </div>
           )}
+          <div
+            style={{
+              textAlign: "center",
+              fontFamily: "Inter, sans-serif",
+              transform: `rotate(${seat.alive ? 0 : 90}deg)`,
+              opacity: seat.alive ? 1 : 0.6,
+              userSelect: "none",
+              width: 90,
+            }}
+          >
+            <div style={{ fontSize: 30, lineHeight: 1, filter: seat.alive ? "none" : "grayscale(1)" }}>
+              {seat.alive ? seat.avatar : "💀"}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#ece9f5", textShadow: "0 1px 4px #000" }}>
+              {seat.name}
+            </div>
+            {reveal && (
+              <div style={{ fontSize: 11, color: "#9c98b8", textShadow: "0 1px 3px #000" }}>
+                {meta.emoji} {meta.label}
+              </div>
+            )}
+          </div>
         </div>
       </Html>
     </group>
@@ -249,6 +278,7 @@ export default function Scene3D({
   finished,
   showRole,
   playing,
+  thinkingId,
 }: Scene3DProps) {
   const seatPositions = useMemo<Vec3[]>(() => ringPositions(seats.length, 4.2), [seats.length]);
 
@@ -261,7 +291,7 @@ export default function Scene3D({
     >
       <Environment phase={phase} />
       {seats.map((seat, i) => (
-        <Pawn key={seat.id} seat={seat} pos={seatPositions[i]} highlight={highlight} showRole={showRole} />
+        <Pawn key={seat.id} seat={seat} pos={seatPositions[i]} highlight={highlight} showRole={showRole} thinking={thinkingId === seat.id} />
       ))}
       <CameraRig
         seatPositions={seatPositions}

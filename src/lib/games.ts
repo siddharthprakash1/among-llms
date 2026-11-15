@@ -10,7 +10,7 @@ import { buildBrainFactory } from "./agents/brains";
 import { listModels } from "./agents/registry";
 import { applyGame } from "./elo";
 import { store, GameSummary } from "./store";
-import { createLive, finishLive, pushLive } from "./live";
+import { createLive, finishLive, pushLive, pushLiveDecision } from "./live";
 
 export interface CreateGameInput {
   numPlayers?: number;
@@ -83,6 +83,7 @@ export function createLiveGame(input: CreateGameInput): { id: string } {
         id,
         createdAt,
         onEvent: (event, index) => pushLive(id, event, index),
+        onDecision: (rec) => pushLiveDecision(id, rec),
       });
       await store.saveTranscript(transcript);
       await store.updateLeaderboard((board) => applyGame(board, transcript.outcomes, transcript.id));

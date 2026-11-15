@@ -12,6 +12,7 @@ import {
   AccusationRecord,
   AccuseDecision,
   Brain,
+  DecisionTrace,
   NightDecision,
   PlayerView,
   VoteDecision,
@@ -209,6 +210,22 @@ export interface MockStyle {
 
 export const DEFAULT_STYLE: MockStyle = { aggression: 0.5, selfPreserve: 0.5 };
 
+/**
+ * Report why a move was made. Rationales are built ONLY from values the
+ * heuristic already computed: nothing on this path may draw from the rng, or
+ * every seeded mock game would change.
+ */
+function explain(trace: DecisionTrace | undefined, reasoning: string): void {
+  if (!trace) return;
+  trace.source = "bot";
+  trace.reasoning = reasoning;
+}
+
+interface Choice {
+  target: number;
+  why: string;
+}
+
 export class MockBrain implements Brain {
   readonly id: string;
   private rng: Rng;
@@ -225,13 +242,19 @@ export class MockBrain implements Brain {
    * otherwise eliminate whoever looks most dangerous to the pack. Used by
    * both the night kill and wolf chat, so the pack's chatter matches its bite.
    */
-  private wolfPick(view: PlayerView): number | null {
+  private wolfPick(view: PlayerView): Choice | null {
     const nonWolves = view.aliveIds.filter((id) => !view.knownWolves.includes(id));
     if (nonWolves.length === 0) return null;
 
     // Priority: silence a revealed Seer. It's the village's engine.
     const seers = seerClaimants(view).filter((id) => nonWolves.includes(id));
-    if (seers.length > 0) return pick(this.rng, seers);
+    if (seers.length > 0) {
+      const target = pick(this.rng, seers);
+      return {
+        target,
+        why: `${nameOf(view, target)} claimed Seer — silence them before they expose the pack.`,
+      };
+    }
 
     // Otherwise take out whoever is closing in on the pack.
     const threat = new Map<number, number>();
@@ -249,180 +272,343 @@ export class MockBrain implements Brain {
         best = id;
       }
     }
-    return best;
+    const n = threat.get(best) ?? 0;
+    return {
+      target: best,
+      why:
+        n > 0
+          ? `${nameOf(view, best)} has voted against the pack ${n}× — the biggest threat to us.`
+          : `Nobody is onto the pack yet; ${nameOf(view, best)} is as good a victim as any.`,
+    };
   }
 
-  async nightAction(view: PlayerView): Promise<NightDecision> {
+  /**
+   * A wolf's daytime scapegoat. Sequential ifs (not a `??` chain) so each
+   * branch can name its reason while short-circuiting in the same order.
+   */
+  private wolfFrame(view: PlayerView, others: number[]): Choice {
+    const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
+    const pool = nonWolves.length ? nonWolves : others;
+    const buddy = leaderOf(buddySuspicion(view), this.rng, pool);
+    if (buddy !== null)
+      return {
+        target: buddy,
+        why: `${nameOf(view, buddy)}'s votes lined up with a dead packmate — an easy frame.`,
+      };
+    const prime = primeSuspect(view, this.rng, view.knownWolves);
+    if (prime !== null)
+      return { target: prime, why: `The table already suspects ${nameOf(view, prime)}; pile on.` };
+    const target = pick(this.rng, pool);
+    return { target, why: `No heat on anyone yet; cast doubt on ${nameOf(view, target)}.` };
+  }
+
+  /** A villager's evidence-based read: a Seer claim first, then voting alignment. */
+  private goodRead(
+    view: PlayerView,
+    claim: number | null,
+    others: number[]
+  ): { target: number; via: "claim" | "buddy" } | null {
+    if (claim !== null) return { target: claim, via: "claim" };
+    const buddy = leaderOf(buddySuspicion(view), this.rng, others);
+    return buddy !== null ? { target: buddy, via: "buddy" } : null;
+  }
+
+  async nightAction(view: PlayerView, trace?: DecisionTrace): Promise<NightDecision> {
     if (view.self.role === "werewolf") {
-      const target = this.wolfPick(view);
-      if (target === null) return { targetId: null };
-      return { targetId: target, note: "Eliminate the villager most dangerous to the pack." };
+      const choice = this.wolfPick(view);
+      if (choice === null) {
+        explain(trace, "No legal target tonight.");
+        return { targetId: null };
+      }
+      explain(trace, choice.why);
+      return { targetId: choice.target };
     }
 
     if (view.self.role === "seer") {
       const scanned = new Set(view.seerResults.map((r) => r.targetId));
       const unscanned = aliveOthers(view).filter((id) => !scanned.has(id));
       const pool = unscanned.length > 0 ? unscanned : aliveOthers(view);
-      if (pool.length === 0) return { targetId: null };
+      if (pool.length === 0) {
+        explain(trace, "No one left to scan.");
+        return { targetId: null };
+      }
       const suspect = primeSuspect(view, this.rng);
-      const target = suspect !== null && pool.includes(suspect) ? suspect : pick(this.rng, pool);
-      return { targetId: target, note: "Reveal the truth about a suspicious neighbor." };
+      if (suspect !== null && pool.includes(suspect)) {
+        explain(trace, `${nameOf(view, suspect)} is drawing the most votes — worth a look.`);
+        return { targetId: suspect };
+      }
+      const target = pick(this.rng, pool);
+      explain(
+        trace,
+        unscanned.length > 0
+          ? `No strong lead; scanning ${nameOf(view, target)}, whom I haven't checked.`
+          : `Everyone has been scanned; re-checking ${nameOf(view, target)}.`
+      );
+      return { targetId: target };
     }
 
     if (view.self.role === "doctor") {
       const others = aliveOthers(view);
-      if (others.length === 0) return { targetId: view.self.id };
+      if (others.length === 0) {
+        explain(trace, "Only I am left to guard.");
+        return { targetId: view.self.id };
+      }
       // Keep the revealed Seer alive above all else.
       const seers = seerClaimants(view).filter((id) => view.aliveIds.includes(id));
-      if (seers.length > 0) return { targetId: pick(this.rng, seers), note: "Shield the Seer." };
-      if (this.rng() < 0.15 + 0.3 * this.style.selfPreserve)
-        return { targetId: view.self.id, note: "Guard myself tonight." };
-      return { targetId: pick(this.rng, others), note: "Shield a likely target." };
+      if (seers.length > 0) {
+        const target = pick(this.rng, seers);
+        explain(trace, `Shield ${nameOf(view, target)}: a claimed Seer is the wolves' obvious target.`);
+        return { targetId: target };
+      }
+      if (this.rng() < 0.15 + 0.3 * this.style.selfPreserve) {
+        explain(trace, "No one worth the risk — guarding myself tonight.");
+        return { targetId: view.self.id };
+      }
+      const target = pick(this.rng, others);
+      explain(trace, `No Seer to protect; guessing the wolves go for ${nameOf(view, target)}.`);
+      return { targetId: target };
     }
 
+    explain(trace, "No night action for my role.");
     return { targetId: null }; // villagers have no night action
   }
 
-  async dayStatement(view: PlayerView): Promise<string> {
+  async dayStatement(view: PlayerView, trace?: DecisionTrace): Promise<string> {
     const others = aliveOthers(view);
-    if (others.length === 0) return "It's just the final few now. Choose carefully.";
+    if (others.length === 0) {
+      explain(trace, "Nobody left to persuade.");
+      return "It's just the final few now. Choose carefully.";
+    }
 
     // The Seer reveals a confirmed wolf.
     if (view.self.role === "seer") {
       const wolf = knownLiveWolfForSeer(view);
-      if (wolf !== null) return render(view, "seer-claim", wolf, this.rng);
+      if (wolf !== null) {
+        explain(trace, `I've confirmed ${nameOf(view, wolf)} is a wolf — time to go public.`);
+        return render(view, "seer-claim", wolf, this.rng);
+      }
     }
 
     const claim = leaderOf(activeSeerClaims(view), this.rng, others);
 
     if (view.self.role === "jester") {
+      explain(trace, "Look just guilty enough to draw the rope.");
       return this.rng() < 0.5 ? pick(this.rng, JESTER_LINES) : render(view, "neutral", null, this.rng);
     }
 
     if (view.self.alignment === "evil") {
       // If the Seer has fingered one of us, deflect onto a non-wolf.
-      const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
-      const pool = nonWolves.length ? nonWolves : others;
-      const target =
-        leaderOf(buddySuspicion(view), this.rng, pool) ??
-        primeSuspect(view, this.rng, view.knownWolves) ??
-        pick(this.rng, pool);
-      return render(view, "wolf-deflect", target, this.rng);
+      const frame = this.wolfFrame(view, others);
+      explain(trace, frame.why);
+      return render(view, "wolf-deflect", frame.target, this.rng);
     }
 
     // Good, non-seer: rally behind the Seer, then behavioural evidence.
-    const suspect = claim ?? leaderOf(buddySuspicion(view), this.rng, others);
-    if (suspect !== null) return render(view, "accuse", suspect, this.rng);
-    const iAmSuspect = (votesReceived(view).get(view.self.id) ?? 0) >= 2;
-    if (iAmSuspect && this.rng() < 0.4 + 0.4 * this.style.selfPreserve)
+    const read = this.goodRead(view, claim, others);
+    if (read !== null) {
+      explain(
+        trace,
+        read.via === "claim"
+          ? `The Seer named ${nameOf(view, read.target)}. Rally behind it.`
+          : `${nameOf(view, read.target)} kept voting alongside a revealed wolf.`
+      );
+      return render(view, "accuse", read.target, this.rng);
+    }
+    const votesOnMe = votesReceived(view).get(view.self.id) ?? 0;
+    if (votesOnMe >= 2 && this.rng() < 0.4 + 0.4 * this.style.selfPreserve) {
+      explain(trace, `I've drawn ${votesOnMe} votes — time to defend myself.`);
       return render(view, "defend", null, this.rng);
+    }
+    explain(trace, "No solid read yet; keep people talking.");
     return render(view, "neutral", null, this.rng);
   }
 
-  async dayVote(view: PlayerView): Promise<VoteDecision> {
+  async dayVote(view: PlayerView, trace?: DecisionTrace): Promise<VoteDecision> {
     const others = aliveOthers(view);
-    if (others.length === 0) return { targetId: null };
+    if (others.length === 0) {
+      explain(trace, "No one to vote for.");
+      return { targetId: null };
+    }
 
     if (view.self.role === "seer") {
       const wolf = knownLiveWolfForSeer(view);
-      if (wolf !== null) return { targetId: wolf, note: "Vote the confirmed wolf." };
+      if (wolf !== null) {
+        explain(trace, `Vote out ${nameOf(view, wolf)}, the wolf I confirmed.`);
+        return { targetId: wolf };
+      }
     }
 
     const claim = leaderOf(activeSeerClaims(view), this.rng, others);
 
     if (view.self.role === "jester") {
       const ps = primeSuspect(view, this.rng);
-      return { targetId: ps ?? pick(this.rng, others) };
+      if (ps !== null) {
+        explain(trace, `Vote with the crowd on ${nameOf(view, ps)} so I blend in.`);
+        return { targetId: ps };
+      }
+      const target = pick(this.rng, others);
+      explain(trace, `No crowd to follow; a throwaway vote on ${nameOf(view, target)}.`);
+      return { targetId: target };
     }
 
     if (view.self.alignment === "evil") {
       // Never reinforce a mob that has (correctly) turned on the pack; steer it
       // onto a villager instead.
-      const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
-      const pool = nonWolves.length ? nonWolves : others;
-      const target =
-        leaderOf(buddySuspicion(view), this.rng, pool) ??
-        primeSuspect(view, this.rng, view.knownWolves) ??
-        pick(this.rng, pool);
-      return { targetId: target, note: "Thin the village." };
+      const frame = this.wolfFrame(view, others);
+      explain(trace, frame.why);
+      return { targetId: frame.target };
     }
 
     // Good: follow the Seer, then behavioural evidence. With no hard read,
     // abstain rather than risk lynching a fellow villager.
-    const suspect = claim ?? leaderOf(buddySuspicion(view), this.rng, others);
-    if (suspect !== null) return { targetId: suspect };
+    const read = this.goodRead(view, claim, others);
+    if (read !== null) {
+      explain(
+        trace,
+        read.via === "claim"
+          ? `The Seer named ${nameOf(view, read.target)}. Rally behind it.`
+          : `${nameOf(view, read.target)} kept voting alongside a revealed wolf.`
+      );
+      return { targetId: read.target };
+    }
     if ((votesReceived(view).get(view.self.id) ?? 0) === 0 && this.style.aggression > 0.75) {
       // Aggressive bots still apply pressure on the standing suspect.
       const ps = primeSuspect(view, this.rng);
-      if (ps !== null) return { targetId: ps };
+      if (ps !== null) {
+        explain(
+          trace,
+          `No hard read, but ${nameOf(view, ps)} is the standing suspect — keep the pressure on.`
+        );
+        return { targetId: ps };
+      }
     }
+    explain(trace, "No hard read — abstaining beats lynching a villager.");
     return { targetId: null };
   }
 
-  async wolfChat(view: PlayerView, round: number): Promise<string> {
-    const target = this.wolfPick(view);
-    if (target === null) return "";
+  async wolfChat(view: PlayerView, round: number, trace?: DecisionTrace): Promise<string> {
+    const choice = this.wolfPick(view);
+    if (choice === null) {
+      explain(trace, "No one left to hunt.");
+      return "";
+    }
+    const name = nameOf(view, choice.target);
+    explain(
+      trace,
+      (round === 1 ? `Propose ${name}: ` : `Back the pack's pick, ${name}: `) + choice.why
+    );
     const pool = round === 1 ? WOLF_CHAT_PROPOSE : WOLF_CHAT_AGREE;
-    return fillTarget(pick(this.rng, pool), nameOf(view, target));
+    return fillTarget(pick(this.rng, pool), name);
   }
 
-  async accuse(view: PlayerView): Promise<AccuseDecision> {
+  async accuse(view: PlayerView, trace?: DecisionTrace): Promise<AccuseDecision> {
     const others = aliveOthers(view);
-    if (others.length === 0) return { targetId: null };
+    if (others.length === 0) {
+      explain(trace, "No one to accuse.");
+      return { targetId: null };
+    }
     if (view.self.role === "jester") {
       // Draw a little fire without being obvious.
-      if (this.rng() < 0.4) return { targetId: null };
+      if (this.rng() < 0.4) {
+        explain(trace, "Stay quiet this round — don't overplay it.");
+        return { targetId: null };
+      }
       const target = pick(this.rng, others);
+      explain(trace, `A loose accusation at ${nameOf(view, target)} keeps eyes on me.`);
       return { targetId: target, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, target)) };
     }
     if (view.self.alignment === "evil") {
-      const nonWolves = others.filter((id) => !view.knownWolves.includes(id));
-      const pool = nonWolves.length ? nonWolves : others;
-      const target =
-        leaderOf(buddySuspicion(view), this.rng, pool) ??
-        primeSuspect(view, this.rng, view.knownWolves) ??
-        pick(this.rng, pool);
-      return { targetId: target, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, target)) };
+      const frame = this.wolfFrame(view, others);
+      explain(trace, frame.why);
+      return {
+        targetId: frame.target,
+        text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, frame.target)),
+      };
     }
     if (view.self.role === "seer") {
       const wolf = knownLiveWolfForSeer(view);
-      if (wolf !== null)
+      if (wolf !== null) {
+        explain(trace, `Put the wolf I confirmed, ${nameOf(view, wolf)}, on the record.`);
         return { targetId: wolf, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, wolf)) };
+      }
     }
-    const suspect =
-      leaderOf(activeSeerClaims(view), this.rng, others) ?? leaderOf(buddySuspicion(view), this.rng, others);
-    if (suspect === null || this.rng() > 0.35 + 0.5 * this.style.aggression) return { targetId: null };
-    return { targetId: suspect, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), nameOf(view, suspect)) };
+    const read = this.goodRead(view, leaderOf(activeSeerClaims(view), this.rng, others), others);
+    if (read === null) {
+      explain(trace, "Nothing solid enough to accuse on.");
+      return { targetId: null };
+    }
+    const name = nameOf(view, read.target);
+    if (this.rng() > 0.35 + 0.5 * this.style.aggression) {
+      explain(trace, `Holding fire on ${name} for now.`);
+      return { targetId: null };
+    }
+    explain(
+      trace,
+      read.via === "claim"
+        ? `The Seer named ${name} — put it on the record.`
+        : `${name} voted with a revealed wolf — put it on the record.`
+    );
+    return { targetId: read.target, text: fillTarget(pick(this.rng, ACCUSE_FORMAL), name) };
   }
 
-  async defend(view: PlayerView, against: AccusationRecord[]): Promise<string> {
+  async defend(view: PlayerView, against: AccusationRecord[], trace?: DecisionTrace): Promise<string> {
     if (against.length > 0) {
-      return fillTarget(pick(this.rng, REBUTTAL_TEMPLATES), nameOf(view, against[0].from));
+      const accuser = nameOf(view, against[0].from);
+      explain(trace, `Turn it back on ${accuser}, who accused me first.`);
+      return fillTarget(pick(this.rng, REBUTTAL_TEMPLATES), accuser);
     }
+    explain(trace, "Plead my case to the table.");
     return render(view, "defend", null, this.rng);
   }
 
-  async witchAction(view: PlayerView, wolfTargetId: number | null): Promise<WitchDecision> {
+  async witchAction(
+    view: PlayerView,
+    wolfTargetId: number | null,
+    trace?: DecisionTrace
+  ): Promise<WitchDecision> {
     const claimants = seerClaimants(view);
     if (
       view.potions?.heal &&
       wolfTargetId !== null &&
       (wolfTargetId === view.self.id || claimants.includes(wolfTargetId))
     ) {
+      explain(
+        trace,
+        wolfTargetId === view.self.id
+          ? "The wolves are coming for me — drink the heal."
+          : `The wolves hit ${nameOf(view, wolfTargetId)}, our claimed Seer — worth the heal.`
+      );
       return { heal: true, poisonTargetId: null };
     }
     if (view.potions?.poison) {
       const confirmed = leaderOf(activeSeerClaims(view), this.rng, aliveOthers(view));
-      if (confirmed !== null) return { heal: false, poisonTargetId: confirmed };
+      if (confirmed !== null) {
+        explain(trace, `The Seer confirmed ${nameOf(view, confirmed)}; poison settles it.`);
+        return { heal: false, poisonTargetId: confirmed };
+      }
     }
+    explain(trace, "Nothing worth a potion tonight.");
     return { heal: false, poisonTargetId: null };
   }
 
-  async hunterShot(view: PlayerView): Promise<{ targetId: number | null }> {
+  async hunterShot(view: PlayerView, trace?: DecisionTrace): Promise<{ targetId: number | null }> {
     const others = view.aliveIds.filter((id) => id !== view.self.id);
-    if (others.length === 0) return { targetId: null };
+    if (others.length === 0) {
+      explain(trace, "No one left to shoot.");
+      return { targetId: null };
+    }
     const confirmed = leaderOf(activeSeerClaims(view), this.rng, others);
-    const target = confirmed ?? primeSuspect(view, this.rng) ?? pick(this.rng, others);
+    if (confirmed !== null) {
+      explain(trace, `Taking the Seer-confirmed wolf ${nameOf(view, confirmed)} with me.`);
+      return { targetId: confirmed };
+    }
+    const prime = primeSuspect(view, this.rng);
+    if (prime !== null) {
+      explain(trace, `${nameOf(view, prime)} is the table's top suspect — my last arrow.`);
+      return { targetId: prime };
+    }
+    const target = pick(this.rng, others);
+    explain(trace, `No read — a blind shot at ${nameOf(view, target)}.`);
     return { targetId: target };
   }
 }

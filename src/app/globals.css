@@ -14,6 +14,7 @@
   --good: #5cc8b0;
   --evil: #e0556b;
   --moon: #8ea2ff;
+  --mind: #b48cff;
 
   /* Cinematic scene ambience — cross-faded by phase. Night by default. */
   --amb-1: #131a33;
@@ -162,6 +163,11 @@ body {
   color: #d9a3ff;
   border-color: color-mix(in srgb, #d9a3ff 40%, transparent);
   background: color-mix(in srgb, #d9a3ff 12%, transparent);
+}
+.tag-mind {
+  color: var(--mind);
+  border-color: color-mix(in srgb, var(--mind) 40%, transparent);
+  background: color-mix(in srgb, var(--mind) 12%, transparent);
 }
 
 .link {

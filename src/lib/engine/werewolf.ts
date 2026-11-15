@@ -8,7 +8,11 @@ import {
   BrainFactory,
   DeathCause,
   DeathRecord,
+  DecisionRecord,
+  DecisionSource,
+  DecisionTrace,
   DefenseRecord,
+  FallbackReason,
   GameConfig,
   GameEvent,
   Player,
@@ -31,6 +35,8 @@ interface SimulateOptions {
   createdAt: string;
   /** Streaming hook: called as each event is produced (powers live mode). */
   onEvent?: (event: GameEvent, index: number) => void;
+  /** Streaming hook for the reasoning sidecar. Always fires before onEvent for the same step. */
+  onDecision?: (record: DecisionRecord) => void;
 }
 
 /**
@@ -140,6 +146,107 @@ function validateTarget(candidate: number | null, legal: number[], rng: Rng): nu
   return legal[randInt(rng, legal.length)];
 }
 
+// --- decision recording (reasoning inspector sidecar) --------------------
+
+const MAX_REASONING = 600;
+const SOURCES: DecisionSource[] = ["model", "fallback", "bot", "unknown"];
+const FALLBACK_REASONS: FallbackReason[] = ["timeout", "http", "parse", "invalid", "error"];
+
+const N_RANDOM = "Illegal target — the engine picked a random legal one.";
+const N_RANDOM_NULL = "No target given — the engine picked a random legal one.";
+const N_VOTE = "Illegal vote target — counted as an abstain.";
+const N_ACCUSE = "Illegal accusation target — ignored.";
+const N_EMPTY_STATEMENT = "Empty statement — replaced with “…”.";
+const N_EMPTY = "Empty message — nothing was said.";
+const N_BOTH = "Both potions requested — the heal wins.";
+const N_HEAL_UNAVAILABLE = "Heal unavailable — the poison was used instead.";
+const N_WITCH_NOTHING = "Requested potion unavailable or target illegal — nothing happened.";
+
+type SealedTrace = Pick<DecisionRecord, "source" | "fallbackReason" | "reasoning" | "latencyMs">;
+
+/** Copy + sanitise what a brain wrote. A brain's trace is untrusted: never spread it. */
+function sealTrace(trace: DecisionTrace, legacyNote?: unknown): SealedTrace {
+  try {
+    // Each property is read exactly once: a getter may throw or change its answer.
+    const r: unknown = trace.reasoning;
+    const src: unknown = trace.source;
+    const fr: unknown = trace.fallbackReason;
+    const ms: unknown = trace.latencyMs;
+    const raw = typeof r === "string" ? r : typeof legacyNote === "string" ? legacyNote : "";
+    // Cap before the regex so a multi-megabyte string costs nothing.
+    const capped = raw
+      .slice(0, MAX_REASONING * 4)
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+      .trim()
+      .slice(0, MAX_REASONING);
+    // The cap counts UTF-16 units; do not leave half of an emoji at the cut.
+    const reasoning = /[\uD800-\uDBFF]$/.test(capped) ? capped.slice(0, -1) : capped;
+    const source = SOURCES.includes(src as DecisionSource) ? (src as DecisionSource) : "unknown";
+    const fallbackReason = FALLBACK_REASONS.includes(fr as FallbackReason)
+      ? (fr as FallbackReason)
+      : undefined;
+    const latencyMs =
+      typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined;
+    return { source, fallbackReason, reasoning: reasoning || undefined, latencyMs };
+  } catch {
+    return { source: "unknown" }; // a throwing accessor on the trace must not abort the game
+  }
+}
+
+/** Garbage (undefined, NaN, strings) from a scripted brain reads as "no target". */
+const asTarget = (v: unknown): number | null => (Number.isInteger(v) ? (v as number) : null);
+
+type Draft = Pick<DecisionRecord, "day" | "phase" | "playerId" | "kind" | "produced" | "ruling"> &
+  Partial<Pick<DecisionRecord, "requested" | "applied" | "rulingNote">>;
+
+function createDecisionLog(events: GameEvent[], onDecision?: (r: DecisionRecord) => void) {
+  const records: DecisionRecord[] = [];
+  return {
+    records,
+    add(d: Draft, t: SealedTrace): void {
+      // Fixed key order + omitted (never undefined) keys keep JSON output stable.
+      const rec: DecisionRecord = {
+        seq: records.length,
+        step: events.length,
+        produced: d.produced,
+        day: d.day,
+        phase: d.phase,
+        playerId: d.playerId,
+        kind: d.kind,
+        source: t.source,
+        ...(t.fallbackReason ? { fallbackReason: t.fallbackReason } : {}),
+        ...(d.requested ? { requested: d.requested } : {}),
+        ...(d.applied ? { applied: d.applied } : {}),
+        ruling: d.ruling,
+        ...(d.rulingNote ? { rulingNote: d.rulingNote } : {}),
+        ...(t.reasoning ? { reasoning: t.reasoning } : {}),
+        ...(t.latencyMs !== undefined ? { latencyMs: t.latencyMs } : {}),
+      };
+      records.push(rec);
+      try {
+        onDecision?.(rec);
+      } catch {
+        /* inspector telemetry must never abort a game */
+      }
+    },
+  };
+}
+type DecisionLog = ReturnType<typeof createDecisionLog>;
+
+/** Ruling for a site that went through validateTarget: what was asked vs what was used. */
+function targetRuling(
+  requestedRaw: unknown,
+  applied: number | null
+): Pick<Draft, "requested" | "applied" | "ruling" | "rulingNote"> {
+  const req = asTarget(requestedRaw);
+  return {
+    requested: { targetId: req },
+    applied: { targetId: applied },
+    ruling: applied === req ? "accepted" : "clamped",
+    rulingNote: applied === req ? undefined : req === null ? N_RANDOM_NULL : N_RANDOM,
+  };
+}
+
 // --- resolution helpers --------------------------------------------------
 
 export function pluralityPick(prefs: number[], rng: Rng): number | null {
@@ -205,7 +312,8 @@ async function fireHunter(
   brains: Map<number, Brain>,
   rng: Rng,
   day: number,
-  phase: "night" | "day"
+  phase: "night" | "day",
+  log: DecisionLog
 ): Promise<void> {
   // Snapshot of not-yet-fired dead hunters at call time: a hunter killed by
   // another hunter's shot within this same call fires on the NEXT invocation,
@@ -217,10 +325,26 @@ async function fireHunter(
     const hunter = s.players[d.playerId];
     const legal = alivePlayers(s).map((p) => p.id);
     if (legal.length === 0) continue;
-    const decision =
-      (await brains.get(hunter.id)!.hunterShot?.(buildView(s, hunter, phase, day))) ??
-      { targetId: null };
+    const brain = brains.get(hunter.id)!;
+    const trace: DecisionTrace = {};
+    const decision = brain.hunterShot
+      ? ((await brain.hunterShot(buildView(s, hunter, phase, day), trace)) ?? { targetId: null })
+      : { targetId: null };
+    const sealed = brain.hunterShot ? sealTrace(trace) : null; // null ⇒ write no record
     const target = validateTarget(decision.targetId, legal, rng);
+    if (sealed) {
+      log.add(
+        {
+          day,
+          phase,
+          playerId: hunter.id,
+          kind: "hunter_shot",
+          produced: target !== null,
+          ...targetRuling(decision.targetId, target),
+        },
+        sealed
+      );
+    }
     if (target === null) continue;
     events.push({ kind: "hunter_shot", day, hunterId: hunter.id, targetId: target });
     applyDeath(s, events, day, target, "hunter");
@@ -261,6 +385,9 @@ export async function simulate(
   };
 
   const events = createEventLog(opts.onEvent);
+  // A local, never a field of MutableState: buildView reads only MutableState,
+  // so recorded reasoning has no path into any PlayerView or prompt.
+  const log = createDecisionLog(events, opts.onDecision);
   events.push({ kind: "game_start", day: 0 });
   const maxDays = config.maxDays ?? config.numPlayers + 3;
 
@@ -286,9 +413,18 @@ export async function simulate(
       for (let round = 1; round <= 2; round++) {
         for (const w of wolves) {
           if (!w.alive) continue;
-          const raw = await brains.get(w.id)!.wolfChat?.(buildView(state, w, "night", day), round);
+          const brain = brains.get(w.id)!;
+          if (!brain.wolfChat) continue;
+          const trace: DecisionTrace = {};
+          const raw = await brain.wolfChat(buildView(state, w, "night", day), round, trace);
+          const sealed = sealTrace(trace);
           const text = (raw ?? "").trim().slice(0, 240);
-          if (!text) continue;
+          const base = { day, phase: "night" as const, playerId: w.id, kind: "wolf_chat" as const };
+          if (!text) {
+            log.add({ ...base, produced: false, ruling: "dropped", rulingNote: N_EMPTY }, sealed);
+            continue;
+          }
+          log.add({ ...base, produced: true, ruling: "accepted" }, sealed);
           state.wolfChat.push({ day, wolfId: w.id, text });
           events.push({ kind: "wolf_chat", day, wolfId: w.id, text });
         }
@@ -299,13 +435,32 @@ export async function simulate(
     let killTarget: number | null = null;
     if (wolves.length > 0) {
       const prefs: number[] = [];
+      // Each wolf's own preference is recorded, but only once the pack result is
+      // known (it decides `produced`), so the records are buffered here.
+      const pending: { wolfId: number; ruling: ReturnType<typeof targetRuling>; sealed: SealedTrace }[] = [];
       for (const w of wolves) {
         const legal = nightTargets(state, w);
-        const decision = await brains.get(w.id)!.nightAction(buildView(state, w, "night", day));
+        const trace: DecisionTrace = {};
+        const decision = await brains.get(w.id)!.nightAction(buildView(state, w, "night", day), trace);
+        const sealed = sealTrace(trace, decision.note);
         const t = validateTarget(decision.targetId, legal, rng);
+        pending.push({ wolfId: w.id, ruling: targetRuling(decision.targetId, t), sealed });
         if (t !== null) prefs.push(t);
       }
       killTarget = pluralityPick(prefs, rng);
+      for (const p of pending) {
+        log.add(
+          {
+            day,
+            phase: "night",
+            playerId: p.wolfId,
+            kind: "wolf_kill",
+            produced: killTarget !== null,
+            ...p.ruling,
+          },
+          p.sealed
+        );
+      }
       if (killTarget !== null) {
         events.push({ kind: "wolf_kill", day, actorIds: wolves.map((w) => w.id), targetId: killTarget });
       }
@@ -314,8 +469,21 @@ export async function simulate(
     // Seer(s) inspect.
     for (const seer of alivePlayers(state).filter((p) => p.role === "seer")) {
       const legal = nightTargets(state, seer);
-      const decision = await brains.get(seer.id)!.nightAction(buildView(state, seer, "night", day));
+      const trace: DecisionTrace = {};
+      const decision = await brains.get(seer.id)!.nightAction(buildView(state, seer, "night", day), trace);
+      const sealed = sealTrace(trace, decision.note);
       const t = validateTarget(decision.targetId, legal, rng);
+      log.add(
+        {
+          day,
+          phase: "night",
+          playerId: seer.id,
+          kind: "seer_check",
+          produced: t !== null,
+          ...targetRuling(decision.targetId, t),
+        },
+        sealed
+      );
       if (t !== null) {
         const result = state.players[t].alignment;
         const mem = state.seerMemory.get(seer.id) ?? [];
@@ -329,8 +497,21 @@ export async function simulate(
     const protectedIds = new Set<number>();
     for (const doc of alivePlayers(state).filter((p) => p.role === "doctor")) {
       const legal = nightTargets(state, doc);
-      const decision = await brains.get(doc.id)!.nightAction(buildView(state, doc, "night", day));
+      const trace: DecisionTrace = {};
+      const decision = await brains.get(doc.id)!.nightAction(buildView(state, doc, "night", day), trace);
+      const sealed = sealTrace(trace, decision.note);
       const t = validateTarget(decision.targetId, legal, rng);
+      log.add(
+        {
+          day,
+          phase: "night",
+          playerId: doc.id,
+          kind: "doctor_save",
+          produced: t !== null,
+          ...targetRuling(decision.targetId, t),
+        },
+        sealed
+      );
       if (t !== null) {
         protectedIds.add(t);
         state.lastProtected.set(doc.id, t);
@@ -346,28 +527,76 @@ export async function simulate(
       if (!state.witchPotions.has(witch.id))
         state.witchPotions.set(witch.id, { heal: true, poison: true });
       const potions = state.witchPotions.get(witch.id)!;
+      const brain = brains.get(witch.id)!;
+      if (!brain.witchAction) continue;
+      const trace: DecisionTrace = {};
+      // The nullish default stays: a witchAction that resolves to undefined is a pass, not a crash.
       const decision =
-        (await brains.get(witch.id)!.witchAction?.(buildView(state, witch, "night", day), killTarget)) ??
+        (await brain.witchAction(buildView(state, witch, "night", day), killTarget, trace)) ??
         { heal: false, poisonTargetId: null };
+      const sealed = sealTrace(trace);
+      const reqPoison = asTarget(decision.poisonTargetId);
+      const base = {
+        day,
+        phase: "night" as const,
+        playerId: witch.id,
+        kind: "witch_action" as const,
+        requested: { targetId: reqPoison, heal: decision.heal === true },
+      };
+      const legalPoison = alivePlayers(state)
+        .filter((p) => p.id !== witch.id)
+        .map((p) => p.id);
+
       if (decision.heal && potions.heal && killTarget !== null) {
+        log.add(
+          {
+            ...base,
+            produced: true,
+            applied: { targetId: null, heal: true },
+            ruling: reqPoison !== null ? "clamped" : "accepted",
+            rulingNote: reqPoison !== null ? N_BOTH : undefined,
+          },
+          sealed
+        );
         potions.heal = false;
         healedIds.add(killTarget);
         events.push({ kind: "witch_action", day, witchId: witch.id, action: "heal", targetId: killTarget });
-      } else if (decision.poisonTargetId !== null && potions.poison) {
-        const legal = alivePlayers(state)
-          .filter((p) => p.id !== witch.id)
-          .map((p) => p.id);
-        if (legal.includes(decision.poisonTargetId)) {
-          potions.poison = false;
-          poisonTarget = decision.poisonTargetId;
-          events.push({
-            kind: "witch_action",
-            day,
-            witchId: witch.id,
-            action: "poison",
-            targetId: poisonTarget,
-          });
-        }
+      } else if (
+        decision.poisonTargetId !== null &&
+        potions.poison &&
+        legalPoison.includes(decision.poisonTargetId)
+      ) {
+        log.add(
+          {
+            ...base,
+            produced: true,
+            applied: { targetId: decision.poisonTargetId, heal: false },
+            ruling: decision.heal ? "clamped" : "accepted",
+            rulingNote: decision.heal ? N_HEAL_UNAVAILABLE : undefined,
+          },
+          sealed
+        );
+        potions.poison = false;
+        poisonTarget = decision.poisonTargetId;
+        events.push({
+          kind: "witch_action",
+          day,
+          witchId: witch.id,
+          action: "poison",
+          targetId: poisonTarget,
+        });
+      } else {
+        const asked = decision.heal === true || reqPoison !== null;
+        log.add(
+          {
+            ...base,
+            produced: false,
+            applied: { targetId: null, heal: false },
+            ruling: asked ? "dropped" : "accepted",
+            rulingNote: asked ? N_WITCH_NOTHING : undefined,
+          },
+          sealed
+        );
       }
     }
 
@@ -382,7 +611,7 @@ export async function simulate(
       }
     }
     if (poisonTarget !== null) applyDeath(state, events, day, poisonTarget, "poison");
-    await fireHunter(state, events, brains, rng, day, "night");
+    await fireHunter(state, events, brains, rng, day, "night", log);
 
     outcome = checkWin(state);
     if (outcome) break;
@@ -404,8 +633,23 @@ export async function simulate(
     for (const sid of speakers) {
       const speaker = state.players[sid];
       if (!speaker.alive) continue;
-      const text = await brains.get(sid)!.dayStatement(buildView(state, speaker, "day", day));
-      const clean = (text ?? "").trim() || "…";
+      const trace: DecisionTrace = {};
+      const text = await brains.get(sid)!.dayStatement(buildView(state, speaker, "day", day), trace);
+      const sealed = sealTrace(trace);
+      const trimmed = (text ?? "").trim();
+      const clean = trimmed || "…";
+      log.add(
+        {
+          day,
+          phase: "day",
+          playerId: sid,
+          kind: "statement",
+          produced: true,
+          ruling: trimmed ? "accepted" : "clamped",
+          rulingNote: trimmed ? undefined : N_EMPTY_STATEMENT,
+        },
+        sealed
+      );
       state.statements.push({ day, playerId: sid, text: clean });
       events.push({ kind: "statement", day, playerId: sid, text: clean });
     }
@@ -415,16 +659,63 @@ export async function simulate(
     for (const sid of speakers) {
       const accuser = state.players[sid];
       if (!accuser.alive) continue;
-      const decision =
-        (await brains.get(sid)!.accuse?.(buildView(state, accuser, "day", day))) ?? { targetId: null };
-      if (decision.targetId === null) continue;
+      const brain = brains.get(sid)!;
+      const trace: DecisionTrace = {};
+      const decision = brain.accuse
+        ? ((await brain.accuse(buildView(state, accuser, "day", day), trace)) ?? { targetId: null })
+        : { targetId: null };
+      const sealed = brain.accuse ? sealTrace(trace) : null; // null ⇒ write no record
+      const req = asTarget(decision.targetId);
+      const base = { day, phase: "day" as const, playerId: sid, kind: "accusation" as const };
+      if (decision.targetId === null) {
+        if (sealed) {
+          log.add(
+            {
+              ...base,
+              produced: false,
+              requested: { targetId: null },
+              applied: { targetId: null },
+              ruling: "accepted",
+            },
+            sealed
+          );
+        }
+        continue;
+      }
       const legal = alivePlayers(state)
         .filter((p) => p.id !== sid)
         .map((p) => p.id);
-      if (!legal.includes(decision.targetId)) continue;
+      if (!legal.includes(decision.targetId)) {
+        if (sealed) {
+          log.add(
+            {
+              ...base,
+              produced: false,
+              requested: { targetId: req },
+              applied: { targetId: null },
+              ruling: "dropped",
+              rulingNote: N_ACCUSE,
+            },
+            sealed
+          );
+        }
+        continue;
+      }
       const text =
         (decision.text ?? "").trim().slice(0, 240) ||
         `I accuse ${state.players[decision.targetId].name}.`;
+      if (sealed) {
+        log.add(
+          {
+            ...base,
+            produced: true,
+            requested: { targetId: req },
+            applied: { targetId: req },
+            ruling: "accepted",
+          },
+          sealed
+        );
+      }
       const rec: AccusationRecord = { day, from: sid, target: decision.targetId, text };
       todaysAccusations.push(rec);
       state.accusations.push(rec);
@@ -437,9 +728,18 @@ export async function simulate(
       const accused = state.players[aid];
       if (!accused.alive) continue;
       const against = todaysAccusations.filter((a) => a.target === aid);
-      const raw = await brains.get(aid)!.defend?.(buildView(state, accused, "day", day), against);
+      const brain = brains.get(aid)!;
+      if (!brain.defend) continue;
+      const trace: DecisionTrace = {};
+      const raw = await brain.defend(buildView(state, accused, "day", day), against, trace);
+      const sealed = sealTrace(trace);
       const text = (raw ?? "").trim().slice(0, 280);
-      if (!text) continue;
+      const base = { day, phase: "day" as const, playerId: aid, kind: "defense" as const };
+      if (!text) {
+        log.add({ ...base, produced: false, ruling: "dropped", rulingNote: N_EMPTY }, sealed);
+        continue;
+      }
+      log.add({ ...base, produced: true, ruling: "accepted" }, sealed);
       state.defenses.push({ day, playerId: aid, text });
       events.push({ kind: "defense", day, playerId: aid, text });
     }
@@ -450,11 +750,29 @@ export async function simulate(
       const legalVote = alivePlayers(state)
         .filter((p) => p.id !== voter.id)
         .map((p) => p.id);
-      const decision = await brains.get(voter.id)!.dayVote(buildView(state, voter, "day", day));
+      const trace: DecisionTrace = {};
+      const decision = await brains.get(voter.id)!.dayVote(buildView(state, voter, "day", day), trace);
+      const sealed = sealTrace(trace, decision.note);
       const target =
         decision.targetId !== null && legalVote.includes(decision.targetId)
           ? decision.targetId
           : null;
+      const req = asTarget(decision.targetId);
+      const overruled = req !== null && target === null;
+      log.add(
+        {
+          day,
+          phase: "day",
+          playerId: voter.id,
+          kind: "vote",
+          produced: true,
+          requested: { targetId: req },
+          applied: { targetId: target },
+          ruling: overruled ? "clamped" : "accepted",
+          rulingNote: overruled ? N_VOTE : undefined,
+        },
+        sealed
+      );
       const record: VoteRecord = { day, voterId: voter.id, targetId: target };
       dayVotes.push(record);
       state.votes.push(record);
@@ -473,7 +791,7 @@ export async function simulate(
         };
         break;
       }
-      await fireHunter(state, events, brains, rng, day, "day");
+      await fireHunter(state, events, brains, rng, day, "day", log);
     }
 
     outcome = checkWin(state);
@@ -515,5 +833,6 @@ export async function simulate(
     events,
     result: { winner: outcome.winner, reason: outcome.reason, survivorIds, days: day },
     outcomes,
+    decisions: log.records,
   };
 }

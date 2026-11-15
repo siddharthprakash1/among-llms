@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { buildContext, parseTextResponse, parseWitchResponse, parseTargetResponse } from "./prompts";
+import {
+  SYSTEM_PROMPT,
+  accusePrompt,
+  defendPrompt,
+  hunterPrompt,
+  nightPrompt,
+  parseReasoning,
+  parseStatementResponse,
+  statementPrompt,
+  votePrompt,
+  witchPrompt,
+  wolfChatPrompt,
+} from "./prompts";
 import { PlayerView } from "../engine/types";
 
 const view = {
@@ -66,5 +79,111 @@ describe("buildContext role redaction", () => {
     const ctx = buildContext(wolfView);
     expect(ctx).toContain("Your pack's private chat");
     expect(ctx).toContain("tonight we strike");
+  });
+});
+
+// --- reasoning inspector ----------------------------------------------------
+
+describe("parseReasoning", () => {
+  it("reads the private field from clean, fenced and prose-wrapped JSON", () => {
+    expect(parseReasoning('{"reasoning": " Bram is lying ", "target": 1}')).toBe("Bram is lying");
+    expect(parseReasoning('```json\n{"reasoning":"fenced","statement":"hi"}\n```')).toBe("fenced");
+    expect(parseReasoning('Sure! Here you go: {"reasoning":"wrapped","target":1} Hope that helps.')).toBe(
+      "wrapped"
+    );
+  });
+
+  it("is undefined for raw text, a missing key, a non-string and blank", () => {
+    expect(parseReasoning("I think Bram is a wolf")).toBeUndefined();
+    expect(parseReasoning('{"target": 1}')).toBeUndefined();
+    expect(parseReasoning('{"reasoning": 42}')).toBeUndefined();
+    expect(parseReasoning('{"reasoning": "   "}')).toBeUndefined();
+    expect(parseReasoning("")).toBeUndefined();
+  });
+});
+
+describe("parseTextResponse hardening", () => {
+  const STRICT = { allowRaw: false };
+
+  it("lenient mode never speaks a reply that may hold private reasoning", () => {
+    expect(
+      parseTextResponse('```json\n{"reasoning": "I\'m a wolf, deflect onto Bram', ["statement"])
+    ).toBeNull();
+    expect(parseTextResponse('ok {"statement": ', ["statement"])).toBeNull();
+    expect(parseTextResponse('{"reasoning":"secret"}', ["statement"])).toBeNull();
+    expect(
+      parseTextResponse("reasoning: I'm a wolf, deflect onto Bram\nstatement: Bram is suspicious", ["statement"])
+    ).toBeNull();
+  });
+
+  it("strict mode only ever returns a named JSON key", () => {
+    expect(parseTextResponse("Just my words", ["statement"], STRICT)).toBeNull();
+    expect(
+      parseTextResponse(
+        "Reasoning: I'm a wolf, Bram is my packmate, deflect onto Cleo. Statement: Cleo has been quiet.",
+        ["statement"],
+        STRICT
+      )
+    ).toBeNull();
+    expect(
+      parseTextResponse("Thinking it over: Bram is my packmate. I'll say Cleo is quiet.", ["statement"], STRICT)
+    ).toBeNull();
+    expect(parseTextResponse('{"reasoning":"secret","statement":"hi"}', ["statement"], STRICT)).toBe("hi");
+    expect(parseTextResponse('{"reasoning":"secret"}', ["statement"], STRICT)).toBeNull();
+  });
+
+  it("never treats the legacy reason key as public text", () => {
+    expect(
+      parseTextResponse('{"reason":"Bram is my packmate","target":4}', ["accusation"], STRICT)
+    ).toBeNull();
+  });
+});
+
+describe("prompt builders ask for private reasoning", () => {
+  const wolfView = {
+    ...view,
+    self: { id: 0, name: "Ada", role: "werewolf", alignment: "evil", model: "mock" },
+    knownWolves: [0],
+    potions: null,
+  } as unknown as PlayerView;
+
+  it("every builder's response format leads with the reasoning key", () => {
+    const prompts = [
+      nightPrompt(wolfView),
+      statementPrompt(view),
+      votePrompt(view),
+      wolfChatPrompt(wolfView, 1),
+      accusePrompt(view),
+      defendPrompt(view, [{ from: 1, text: "sus" }]),
+      witchPrompt(view, 1),
+      hunterPrompt(view),
+    ];
+    for (const p of prompts) {
+      const format = p.split("\n").at(-1)!;
+      expect(format.startsWith('Respond as JSON: {"reasoning"')).toBe(true);
+    }
+    expect(SYSTEM_PROMPT).toContain('"reasoning"');
+  });
+
+  it("the accuse prompt names the public key accusation, not reason", () => {
+    const p = accusePrompt(view);
+    expect(p).toContain('"accusation"');
+    expect(p).not.toContain('"reason":');
+    for (const other of [nightPrompt(wolfView), votePrompt(view), hunterPrompt(view)])
+      expect(other).not.toContain('"reason":');
+  });
+});
+
+describe("parsers tolerate a leading reasoning key", () => {
+  it("still parse targets, witch decisions and statements", () => {
+    expect(parseTargetResponse('{"reasoning":"Bram is shifty","target":1}', view)).toBe(1);
+    expect(parseTargetResponse('{"reasoning":"Bram is shifty","target":"Bram"}', view)).toBe(1);
+    expect(parseWitchResponse('{"reasoning":"save them","heal":true,"poison":null}', view)).toEqual({
+      heal: true,
+      poisonTargetId: null,
+    });
+    expect(parseStatementResponse('{"reasoning":"lie low","statement":"I trust Bram."}')).toBe(
+      "I trust Bram."
+    );
   });
 });

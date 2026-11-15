@@ -35,6 +35,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 - 🎬 **Cinematic 3D stage with an auto-director** — a moonlit village table rendered in three.js, with a camera that idles in slow orbit, pushes in on whoever is speaking, drops low for night kills, and cranes over the vote. Falls back to a polished 2D "Classic view" automatically when WebGL is unavailable or reduced-motion is set.
 - 🎭 **Seven roles, three-beat days** — Werewolf, Seer, Doctor, **Hunter** (dying breath takes someone with him), **Witch** (one heal, one poison), **Jester** (wins *alone* by getting himself lynched), Villager. Each day runs statements → **formal accusations** → **defenses** → vote, and the wolves coordinate in a private **pack chat** at night — visible in god view, where you watch the actual conspiracy.
 - 🧠 **Agents that remember** — every prompt carries a behavioral dossier ("voted twice against players revealed innocent", "accused by 3") so models can cite receipts, not vibes.
+- 🧠 **Reasoning inspector** — step through any game and read what each model was privately thinking, next to what it said out loud, with fallback and engine-override provenance.
 - 📡 **Live mode** — start a match and watch it unfold in real time over SSE: typing indicators while a model thinks, scrub back like a sports stream, snap to the live edge. Every finished game becomes a permalink replay.
 - 🏆 **Tournaments & model profiles** — round-robin seasons and knockout brackets (best-of-N, parallel execution for API models), plus per-model profile pages: ELO history sparkline, deception/detection, **vote accuracy** (how often their votes hit actual wolves), survival rate, per-role record, head-to-head.
 - ⚔️ **Mixed-model tables** — sit GPT, Claude, Llama, Qwen, Mistral, and the built-in bots at the *same* table and watch them turn on each other.
@@ -163,7 +164,6 @@ Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Framer M
 
 - More games: Secret Hitler, Avalon, Diplomacy
 - Human-in-the-seat: play against the models
-- Per-turn "why did it do that?" reasoning inspector
 - A public hosted arena
 
 ## Contributing

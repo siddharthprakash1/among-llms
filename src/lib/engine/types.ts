@@ -129,7 +129,7 @@ export interface PlayerView {
 
 export interface NightDecision {
   targetId: number | null;
-  /** Optional private reasoning, surfaced in spoiler views. */
+  /** Legacy: prefer the DecisionTrace argument. */
   note?: string;
 }
 
@@ -148,17 +148,69 @@ export interface WitchDecision {
   poisonTargetId: number | null;
 }
 
+export type DecisionKind =
+  | "wolf_chat" | "wolf_kill" | "seer_check" | "doctor_save" | "witch_action"
+  | "hunter_shot" | "statement" | "accusation" | "defense" | "vote";
+
+/** model = the LLM's own answer · fallback = LLM reply unusable, heuristic answered ·
+ *  bot = built-in heuristic seat · unknown = the brain reported nothing. */
+export type DecisionSource = "model" | "fallback" | "bot" | "unknown";
+
+/** timeout = request aborted · http = non-2xx · parse = no JSON object in the reply ·
+ *  invalid = JSON but no usable answer field · error = anything else thrown. */
+export type FallbackReason = "timeout" | "http" | "parse" | "invalid" | "error";
+
+/** accepted = used as-is · clamped = engine substituted something · dropped = ignored, no effect. */
+export type EngineRuling = "accepted" | "clamped" | "dropped";
+
+/**
+ * Write-only sink the engine hands to a brain for ONE call. Never part of a
+ * PlayerView and never interpolated into a prompt.
+ */
+export interface DecisionTrace {
+  reasoning?: string;
+  source?: DecisionSource;
+  fallbackReason?: FallbackReason;
+  /** Wall-clock ms measured by the brain. The engine never reads a clock. */
+  latencyMs?: number;
+}
+
+export interface DecisionChoice {
+  targetId: number | null;
+  /** witch_action only */
+  heal?: boolean;
+}
+
+/** One brain call, as recorded for spectators. Spoiler data. */
+export interface DecisionRecord {
+  seq: number; // 0-based position in Transcript.decisions
+  step: number; // index into Transcript.events this decision is shown with
+  produced: boolean; // true: events[step] is this decision's own outcome
+  day: number;
+  phase: Phase;
+  playerId: number;
+  kind: DecisionKind;
+  source: DecisionSource;
+  fallbackReason?: FallbackReason;
+  requested?: DecisionChoice; // target kinds only: what the brain asked for
+  applied?: DecisionChoice; // target kinds only: what the engine used
+  ruling: EngineRuling;
+  rulingNote?: string; // engine-authored, deterministic
+  reasoning?: string; // capped at 600 chars by the engine
+  latencyMs?: number;
+}
+
 export interface Brain {
   readonly id: string;
-  nightAction(view: PlayerView): Promise<NightDecision>;
-  dayStatement(view: PlayerView): Promise<string>;
-  dayVote(view: PlayerView): Promise<VoteDecision>;
+  nightAction(view: PlayerView, trace?: DecisionTrace): Promise<NightDecision>;
+  dayStatement(view: PlayerView, trace?: DecisionTrace): Promise<string>;
+  dayVote(view: PlayerView, trace?: DecisionTrace): Promise<VoteDecision>;
   // Optional Phase-1 powers; the engine substitutes safe defaults when absent.
-  wolfChat?(view: PlayerView, round: number): Promise<string>;
-  accuse?(view: PlayerView): Promise<AccuseDecision>;
-  defend?(view: PlayerView, against: AccusationRecord[]): Promise<string>;
-  witchAction?(view: PlayerView, wolfTargetId: number | null): Promise<WitchDecision>;
-  hunterShot?(view: PlayerView): Promise<{ targetId: number | null }>;
+  wolfChat?(view: PlayerView, round: number, trace?: DecisionTrace): Promise<string>;
+  accuse?(view: PlayerView, trace?: DecisionTrace): Promise<AccuseDecision>;
+  defend?(view: PlayerView, against: AccusationRecord[], trace?: DecisionTrace): Promise<string>;
+  witchAction?(view: PlayerView, wolfTargetId: number | null, trace?: DecisionTrace): Promise<WitchDecision>;
+  hunterShot?(view: PlayerView, trace?: DecisionTrace): Promise<{ targetId: number | null }>;
 }
 
 export type BrainFactory = (modelId: string, seatId: number) => Brain;
@@ -215,4 +267,6 @@ export interface Transcript {
   events: GameEvent[];
   result: GameResult;
   outcomes: SeatOutcome[];
+  /** Private per-decision reasoning + provenance. Absent on games recorded before the inspector. */
+  decisions?: DecisionRecord[];
 }

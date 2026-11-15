@@ -11,9 +11,10 @@ interface Props {
   phase: ReplayState["phase"];
   day: number;
   showRole: boolean;
+  thinkingId?: number;
 }
 
-export default function GameTable({ seats, highlight, banner, phase, day, showRole }: Props) {
+export default function GameTable({ seats, highlight, banner, phase, day, showRole, thinkingId }: Props) {
   const n = seats.length;
   const isNight = phase === "night";
 
@@ -74,6 +75,7 @@ export default function GameTable({ seats, highlight, banner, phase, day, showRo
             seat={seat}
             highlight={highlight}
             showRole={showRole}
+            thinkingId={thinkingId}
             style={{ left: `${left}%`, top: `${top}%` }}
           />
         );

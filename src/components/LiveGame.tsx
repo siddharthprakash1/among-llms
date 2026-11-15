@@ -6,12 +6,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { GameConfig, GameEvent, Player, Transcript } from "@/lib/engine/types";
+import { DecisionRecord, GameConfig, GameEvent, Player, Transcript } from "@/lib/engine/types";
 import { deriveState } from "@/lib/replay";
 import { playCue } from "@/lib/sound";
-import { modelLabel } from "@/lib/ui";
+import { decisionShortcut, inspect, thinkingSeat } from "@/lib/inspector";
+import { cn, modelLabel } from "@/lib/ui";
 import GameTable from "./GameTable";
 import EventFeed from "./EventFeed";
+import MindInspector, { useRevealOnOpen } from "./MindInspector";
 
 interface Meta {
   id: string;
@@ -25,8 +27,14 @@ export default function LiveGame({ id }: { id: string }) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [done, setDone] = useState(false);
+  const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
+  const [minds, setMinds] = useState(false);
+  // null = the inspector follows the live edge
+  const [pinnedSeq, setPinnedSeq] = useState<number | null>(null);
   const [notFound, setNotFound] = useState(false);
   const seenCue = useRef(-1);
+  const inspectorRef = useRevealOnOpen(minds);
+  const mindsBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const es = new EventSource(`/api/games/${id}/stream`);
@@ -43,6 +51,14 @@ export default function LiveGame({ id }: { id: string }) {
       gotMeta = true;
       try {
         setMeta(JSON.parse((e as MessageEvent).data));
+      } catch {
+        /* ignore */
+      }
+    });
+    es.addEventListener("decision", (e) => {
+      try {
+        const rec = JSON.parse((e as MessageEvent).data) as DecisionRecord;
+        setDecisions((cur) => (cur.some((d) => d.seq === rec.seq) ? cur : [...cur, rec]));
       } catch {
         /* ignore */
       }
@@ -79,8 +95,8 @@ export default function LiveGame({ id }: { id: string }) {
   }, [meta, events]);
 
   const state = useMemo(
-    () => (transcript ? deriveState(transcript, events.length - 1, { revealPrivate: done }) : null),
-    [transcript, events.length, done]
+    () => (transcript ? deriveState(transcript, events.length - 1, { revealPrivate: done || minds }) : null),
+    [transcript, events.length, done, minds]
   );
 
   // ambience phase + a sound cue for the freshest live event
@@ -106,6 +122,23 @@ export default function LiveGame({ id }: { id: string }) {
     }
   }, [events]);
 
+  const pinned = pinnedSeq !== null ? decisions.find((d) => d.seq === pinnedSeq) : undefined;
+  const model = pinned
+    ? inspect(decisions, pinned.step, pinned.seq)
+    : inspect(decisions, events.length - 1, null);
+  const prevDecision = model.prev;
+  const nextDecision = model.next;
+  useEffect(() => {
+    if (!minds) return;
+    const onKey = (e: KeyboardEvent) => {
+      const dir = decisionShortcut(e);
+      if (dir === "prev" && prevDecision) setPinnedSeq(prevDecision.seq);
+      else if (dir === "next" && nextDecision) setPinnedSeq(nextDecision.seq);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [minds, prevDecision, nextDecision]);
+
   if (notFound) {
     return (
       <div className="glass p-12 text-center space-y-3">
@@ -125,6 +158,9 @@ export default function LiveGame({ id }: { id: string }) {
       <div className="glass p-12 text-center text-[var(--muted)]">Connecting to the table…</div>
     );
   }
+
+  const thinkingId = thinkingSeat(model, minds && !pinned);
+  const canInspect = decisions.length > 0;
 
   return (
     <div className="space-y-5">
@@ -147,11 +183,29 @@ export default function LiveGame({ id }: { id: string }) {
             <span className="chip">{meta.config.numPlayers} players</span>
           </div>
         </div>
-        {done && (
-          <Link href={`/game/${id}`} className="btn btn-primary" prefetch={false}>
-            ↻ Watch full replay
-          </Link>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            ref={mindsBtnRef}
+            className={cn("btn btn-ghost whitespace-nowrap", minds && "!text-[var(--mind)]")}
+            onClick={() => setMinds((m) => !m)}
+            disabled={!canInspect}
+            aria-pressed={minds}
+            title={
+              canInspect
+                ? "Show each player's private reasoning (spoilers: reveals all roles)"
+                : done
+                ? "Recorded before reasoning capture"
+                : "No decisions recorded yet"
+            }
+          >
+            🧠 Minds<span className="hidden sm:inline">&nbsp;(spoilers)</span>
+          </button>
+          {done && (
+            <Link href={`/game/${id}`} className="btn btn-primary whitespace-nowrap" prefetch={false}>
+              ↻ Watch full replay
+            </Link>
+          )}
+        </div>
       </div>
 
       {state.finished && state.winner && (
@@ -175,11 +229,31 @@ export default function LiveGame({ id }: { id: string }) {
             banner={state.banner}
             phase={state.phase}
             day={state.day}
-            showRole={done}
+            showRole={done || minds}
+            thinkingId={thinkingId}
           />
         </div>
-        <div className="h-[460px] lg:h-auto lg:min-h-[520px]">
-          <EventFeed log={state.log} seats={state.seats} />
+        <div className="lg:relative lg:min-h-[520px]">
+          <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
+            {minds && (
+              <div ref={inspectorRef} className="shrink-0 h-[400px] lg:h-[68%] flex scroll-mt-20">
+                <MindInspector
+                  model={model}
+                  players={meta.players}
+                  event={model.current ? events[model.current.step] : undefined}
+                  onJump={(rec) => setPinnedSeq(rec.seq)}
+                  onClose={() => {
+                    setMinds(false);
+                    mindsBtnRef.current?.focus();
+                  }}
+                  live={{ following: pinnedSeq === null, onFollow: () => setPinnedSeq(null), done }}
+                />
+              </div>
+            )}
+            <div className="h-[460px] lg:h-auto lg:flex-1 lg:min-h-0">
+              <EventFeed log={state.log} seats={state.seats} />
+            </div>
+          </div>
         </div>
       </div>
 
