@@ -50,6 +50,15 @@ function splitList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Ollama binds 127.0.0.1 only, but Node resolves "localhost" to ::1 first on
+ * Windows — the documented URL is then refused and every turn silently falls
+ * back to the mock brain. Pin loopback hostnames to IPv4.
+ */
+export function normalizeLoopback(baseUrl: string): string {
+  return baseUrl.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
+}
+
 function buildRegistry(): Registry {
   const models: ModelInfo[] = BUILTIN_BOTS.map((b) => ({
     id: b.id,
@@ -70,7 +79,7 @@ function buildRegistry(): Registry {
   // OpenAI-compatible (OpenAI, OpenRouter, Together, LM Studio, …)
   const openaiKey = process.env.OPENAI_API_KEY;
   if (openaiKey) {
-    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    const baseUrl = normalizeLoopback(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1");
     const list = splitList(process.env.OPENAI_MODELS);
     const provider = baseUrl.includes("openrouter")
       ? "OpenRouter"
@@ -100,7 +109,7 @@ function buildRegistry(): Registry {
 
   // Ollama (local, free) — enabled if either var is present.
   if (process.env.OLLAMA_BASE_URL || process.env.OLLAMA_MODELS) {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
+    const baseUrl = normalizeLoopback(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1");
     const list = splitList(process.env.OLLAMA_MODELS);
     for (const model of list.length ? list : ["llama3.1"]) {
       add(
