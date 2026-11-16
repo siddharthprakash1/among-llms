@@ -73,14 +73,14 @@ function recentAccusations(view: PlayerView): string {
   const recent = view.accusations.filter((a) => a.day >= view.day - 1);
   if (recent.length === 0) return "(none)";
   return recent
-    .map((a) => `  D${a.day}: ${nameOf(view, a.from)} accused ${nameOf(view, a.target)} — "${a.text}"`)
+    .map((a) => `  D${a.day}: ${nameOf(view, a.from)} accused ${nameOf(view, a.target)} — ${JSON.stringify(a.text)}`)
     .join("\n");
 }
 
 function recentDefenses(view: PlayerView): string {
   const recent = view.defenses.filter((d) => d.day >= view.day - 1);
   if (recent.length === 0) return "(none)";
-  return recent.map((d) => `  D${d.day}: ${nameOf(view, d.playerId)}: "${d.text}"`).join("\n");
+  return recent.map((d) => `  D${d.day}: ${nameOf(view, d.playerId)}: ${JSON.stringify(d.text)}`).join("\n");
 }
 
 function recentVotes(view: PlayerView): string {
@@ -117,7 +117,7 @@ export function buildContext(view: PlayerView): string {
     "Defenses so far:",
     recentDefenses(view),
     ...(view.wolfChat.length
-      ? ["", "Your pack's private chat:", view.wolfChat.slice(-8).map((c) => `  ${nameOf(view, c.wolfId)}: "${c.text}"`).join("\n")]
+      ? ["", "Your pack's private chat:", view.wolfChat.slice(-8).map((c) => `  ${nameOf(view, c.wolfId)}: ${JSON.stringify(c.text)}`).join("\n")]
       : []),
     ...(view.dossier ? ["", "Behavioral dossier (public record):", view.dossier] : []),
     "",
@@ -202,7 +202,7 @@ export function accusePrompt(view: PlayerView): string {
 }
 
 export function defendPrompt(view: PlayerView, against: { from: number; text: string }[]): string {
-  const lines = against.map((a) => `  ${nameOf(view, a.from)}: "${a.text}"`).join("\n");
+  const lines = against.map((a) => `  ${nameOf(view, a.from)}: ${JSON.stringify(a.text)}`).join("\n");
   return [
     buildContext(view),
     "",

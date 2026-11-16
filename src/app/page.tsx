@@ -104,6 +104,7 @@ export default async function HomePage() {
                       {modelLabel(m)}
                     </span>
                   ))}
+                  {g.models.includes("human") && <span className="chip">unrated</span>}
                 </div>
               </Link>
             ))}

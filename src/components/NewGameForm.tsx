@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ModelInfo } from "@/lib/agents/registry";
-import { cn, modelLabel } from "@/lib/ui";
+import { defaultRoleCounts } from "@/lib/engine/roles";
+import type { Role, ToggleableRole } from "@/lib/engine/types";
+import { ROLE_META, cn, modelLabel } from "@/lib/ui";
 
 const SIZES = [5, 6, 7, 8, 9, 10, 11, 12];
+const SEAT_ROLES: Role[] = ["werewolf", "seer", "doctor", "hunter", "witch", "jester", "villager"];
 const SPECIAL_ROLES = [
   { id: "hunter", label: "🏹 Hunter" },
   { id: "witch", label: "🧪 Witch" },
@@ -22,8 +26,24 @@ export default function NewGameForm() {
     witch: true,
     jester: true,
   });
-  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<"run" | "live" | "seat" | null>(null);
+  const loading = pending !== null;
   const [error, setError] = useState<string | null>(null);
+  const [seatError, setSeatError] = useState<string | null>(null);
+  const [seatOpen, setSeatOpen] = useState(false);
+  // null = surprise me
+  const [seatRole, setSeatRole] = useState<Role | null>(null);
+  const reduce = useReducedMotion();
+
+  const disabledRoles = useMemo(() => Object.keys(specials).filter((r) => !specials[r]), [specials]);
+  const dealtRoles = useMemo(() => {
+    const counts = defaultRoleCounts(numPlayers, disabledRoles as ToggleableRole[]);
+    return SEAT_ROLES.filter((r) => counts[r] > 0);
+  }, [numPlayers, disabledRoles]);
+
+  useEffect(() => {
+    if (seatRole && !dealtRoles.includes(seatRole)) setSeatRole(null);
+  }, [seatRole, dealtRoles]);
 
   useEffect(() => {
     fetch("/api/models")
@@ -47,10 +67,10 @@ export default function NewGameForm() {
   };
 
   const run = async (live: boolean) => {
-    setLoading(true);
+    setPending(live ? "live" : "run");
     setError(null);
+    setSeatError(null);
     try {
-      const disabledRoles = Object.keys(specials).filter((r) => !specials[r]);
       const res = await fetch(live ? "/api/games/live" : "/api/games", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -61,11 +81,42 @@ export default function NewGameForm() {
       router.push(`/game/${data.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
-      setLoading(false);
+      setPending(null);
+    }
+  };
+
+  const takeSeat = async () => {
+    setPending("seat");
+    setError(null);
+    setSeatError(null);
+    try {
+      const res = await fetch("/api/games/human", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          numPlayers,
+          seatModels: selected,
+          disabledRoles,
+          role: seatRole ?? undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not take a seat");
+      router.push(`/play/${data.id}`);
+    } catch (e) {
+      setSeatError(e instanceof Error ? e.message : "Something went wrong");
+      setPending(null);
     }
   };
 
   const onlyMock = models.length <= 1;
+  const chip = (on: boolean) =>
+    cn(
+      "px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+      on
+        ? "bg-[var(--panel-2)] border-[var(--gold)] text-[var(--gold)]"
+        : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+    );
 
   return (
     <div className="card p-5 sm:p-6 space-y-5">
@@ -153,13 +204,82 @@ export default function NewGameForm() {
 
       <div className="grid grid-cols-2 gap-2">
         <button className="btn btn-primary py-3 text-base" onClick={() => run(false)} disabled={loading}>
-          {loading ? "Dealing…" : "▶ Run a match"}
+          {pending === "run" ? "Dealing…" : "▶ Run a match"}
         </button>
         <button className="btn btn-ghost py-3 text-base" onClick={() => run(true)} disabled={loading}>
-          📡 Watch live
+          {pending === "live" ? "Dealing…" : "📡 Watch live"}
         </button>
       </div>
-      {loading && (
+
+      <div>
+        <button
+          className="btn btn-ghost w-full py-3 text-base !border-[color-mix(in_srgb,var(--gold)_55%,transparent)]"
+          onClick={() => setSeatOpen((o) => !o)}
+          aria-expanded={seatOpen}
+          aria-controls="take-a-seat"
+          disabled={loading}
+        >
+          🎭 Play a seat yourself
+          <span
+            aria-hidden
+            className={cn("text-xs text-[var(--muted)] transition-transform", seatOpen && "rotate-180")}
+          >
+            ▾
+          </span>
+        </button>
+        <AnimatePresence initial={false}>
+          {seatOpen && (
+            <motion.div
+              id="take-a-seat"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: reduce ? 0 : 0.25 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-4 space-y-3">
+                <div>
+                  <div className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-2">
+                    Your role
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setSeatRole(null)}
+                      aria-pressed={seatRole === null}
+                      className={chip(seatRole === null)}
+                    >
+                      🎲 Surprise me
+                    </button>
+                    {dealtRoles.map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setSeatRole(r)}
+                        aria-pressed={seatRole === r}
+                        className={chip(seatRole === r)}
+                      >
+                        {ROLE_META[r].emoji} {ROLE_META[r].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--muted)] leading-relaxed">
+                  You take 1 of {numPlayers} seats; the selected models fill the rest. Unrated — the
+                  leaderboard only counts model-vs-model games.
+                </p>
+                {seatError && (
+                  <div role="alert" className="text-sm text-[var(--blood)]">
+                    {seatError}
+                  </div>
+                )}
+                <button className="btn btn-primary w-full py-3 text-base" onClick={takeSeat} disabled={loading}>
+                  {pending === "seat" ? "Dealing…" : "Take your seat →"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      {(pending === "run" || pending === "live") && (
         <p className="text-xs text-[var(--muted)] text-center">
           Real models think in real time — a full game can take a minute.
         </p>

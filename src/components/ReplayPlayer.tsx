@@ -6,13 +6,14 @@ import { DecisionRecord, Transcript } from "@/lib/engine/types";
 import { deriveState, stepDelay, totalSteps } from "@/lib/replay";
 import {
   countLabel,
+  healthLabel,
   decisionShortcut,
   inspect,
   inspectorDwell,
   provenanceSummary,
   thinkingSeat,
 } from "@/lib/inspector";
-import { ROLE_META, cn, modelLabel, pct } from "@/lib/ui";
+import { ROLE_META, cn, modelLabel } from "@/lib/ui";
 import { playCue, SoundCue } from "@/lib/sound";
 import { GameEvent } from "@/lib/engine/types";
 import dynamic from "next/dynamic";
@@ -420,7 +421,6 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
               <div className="display text-lg mb-2.5">Decision health</div>
               <div className="space-y-2">
                 {health.map((h) => {
-                  const bot = h.own + h.fallbacks === 0;
                   const reasons = Object.entries(h.byReason)
                     .map(([reason, n]) => `${reason} × ${n}`)
                     .join(" · ");
@@ -431,7 +431,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
                     >
                       <span className="chip tag-gold">{modelLabel(h.model)}</span>
                       <span>{countLabel(h.decisions, "decision")}</span>
-                      <span>{bot ? "heuristic bot" : `${pct(h.own / h.decisions)} own`}</span>
+                      <span>{healthLabel(h)}</span>
                       <span className={cn(h.fallbacks > 0 && "text-[var(--gold)] font-semibold")}>
                         {countLabel(h.fallbacks, "fallback")}
                         {reasons && <span className="font-normal"> ({reasons})</span>}

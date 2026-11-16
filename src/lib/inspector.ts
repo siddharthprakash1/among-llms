@@ -2,6 +2,8 @@
 // Node APIs. Components only render what these functions decide.
 
 import { DecisionRecord, FallbackReason, GameEvent, Player, Transcript } from "./engine/types";
+import { HUMAN_MODEL_ID } from "./human/types";
+import { pct } from "./ui";
 
 export function hasDecisions(t: Pick<Transcript, "decisions">): boolean {
   return (t.decisions?.length ?? 0) > 0;
@@ -155,6 +157,58 @@ export interface ModelHealth {
   overridden: number;
   /** Mean over records that have latencyMs; null when none do. */
   avgLatencyMs: number | null;
+  /** Human seat only: moves the bot made for it after a timeout or on autopilot. */
+  autopilot?: number;
+}
+
+export interface SourceChip {
+  text: string;
+  tone: "good" | "gold" | "plain";
+  title?: string;
+}
+
+/**
+ * How a decision's origin is labelled. A person's own move reaches the record
+ * with no reported source (the engine does not know about humans), so the
+ * seat's model decides the wording.
+ */
+export function sourceChip(rec: DecisionRecord, actorModel?: string): SourceChip {
+  const human = actorModel === HUMAN_MODEL_ID;
+  switch (rec.source) {
+    case "model":
+      return { text: "● own decision", tone: "good" };
+    case "bot":
+      return human
+        ? { text: "🤖 autopilot", tone: "plain", title: "The person ran out of time; the built-in heuristic made this move." }
+        : { text: "🤖 heuristic bot", tone: "plain" };
+    case "fallback":
+      return {
+        text: `⚠ fallback${rec.fallbackReason ? ` · ${rec.fallbackReason}` : ""}`,
+        tone: "gold",
+        title: "The model's reply was unusable; the built-in heuristic made this move.",
+      };
+    default:
+      return human
+        ? { text: "🧑 human move", tone: "gold" }
+        : { text: "source not reported", tone: "plain" };
+  }
+}
+
+/** Shown in place of the thought when a decision has no reasoning. */
+export function noReasoningText(rec: DecisionRecord, actorModel?: string): string {
+  return actorModel === HUMAN_MODEL_ID && rec.source === "unknown"
+    ? "People don't report their reasoning."
+    : "No reasoning was returned for this decision.";
+}
+
+/** The "how it decided" cell of a Decision health row. */
+export function healthLabel(h: ModelHealth): string {
+  if (h.model === HUMAN_MODEL_ID) {
+    const auto = h.autopilot ?? 0;
+    return auto > 0 ? `played by a person · ${auto} on autopilot` : "played by a person";
+  }
+  if (h.own + h.fallbacks === 0) return "heuristic bot";
+  return `${pct(h.own / h.decisions)} own`;
 }
 
 export function provenanceSummary(decisions: DecisionRecord[], players: Player[]): ModelHealth[] {
@@ -178,6 +232,7 @@ export function provenanceSummary(decisions: DecisionRecord[], players: Player[]
     }
     row.decisions++;
     if (rec.source === "model") row.own++;
+    if (model === HUMAN_MODEL_ID && rec.source === "bot") row.autopilot = (row.autopilot ?? 0) + 1;
     if (rec.source === "fallback") {
       row.fallbacks++;
       if (rec.fallbackReason)

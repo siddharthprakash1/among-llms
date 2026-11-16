@@ -7,15 +7,19 @@ import { cn, modelLabel } from "@/lib/ui";
 interface Props {
   log: LogEntry[];
   seats: ReplaySeat[];
+  youId?: number;
+  /** Height in px of anything pinned over the bottom of the viewport (the play
+   *  screen's action dock): the newest line is scrolled to rest above it. */
+  endClearance?: number;
 }
 
-export default function EventFeed({ log, seats }: Props) {
+export default function EventFeed({ log, seats, youId, endClearance = 0 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const seatOf = (id?: number) => seats.find((s) => s.id === id);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [log.length]);
+  }, [log.length, endClearance]);
 
   return (
     <div className="card h-full flex flex-col overflow-hidden">
@@ -27,6 +31,7 @@ export default function EventFeed({ log, seats }: Props) {
         {log.map((entry) => {
           if (entry.tone === "speech" || entry.tone === "defense") {
             const seat = seatOf(entry.playerId);
+            const mine = youId !== undefined && entry.playerId === youId;
             return (
               <div key={entry.key} className="float-in flex gap-2.5">
                 <span className="text-[22px] leading-none mt-0.5 shrink-0">
@@ -35,6 +40,7 @@ export default function EventFeed({ log, seats }: Props) {
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
                     <span className="text-[13px] font-semibold">{seat?.name}</span>
+                    {mine && <span className="chip tag-gold !text-[10px] !py-0 !px-1.5">You</span>}
                     <span className="text-[10px] text-[var(--muted)]">
                       {modelLabel(seat?.model ?? "")}
                     </span>
@@ -42,7 +48,14 @@ export default function EventFeed({ log, seats }: Props) {
                   {entry.tone === "defense" && (
                     <div className="text-[10px] text-[var(--gold)] mt-0.5">🛡 in their defense</div>
                   )}
-                  <div className="text-[13.5px] text-[var(--text)] bg-[var(--panel-2)] border border-[var(--border)] rounded-xl rounded-tl-sm px-3 py-1.5 mt-0.5">
+                  <div
+                    className={cn(
+                      "text-[13.5px] text-[var(--text)] bg-[var(--panel-2)] border rounded-xl rounded-tl-sm px-3 py-1.5 mt-0.5",
+                      mine
+                        ? "border-[color-mix(in_srgb,var(--gold)_45%,transparent)]"
+                        : "border-[var(--border)]"
+                    )}
+                  >
                     {entry.text}
                   </div>
                 </div>
@@ -76,7 +89,7 @@ export default function EventFeed({ log, seats }: Props) {
             </div>
           );
         })}
-        <div ref={endRef} />
+        <div ref={endRef} style={endClearance ? { scrollMarginBottom: endClearance } : undefined} />
       </div>
     </div>
   );

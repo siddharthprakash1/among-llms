@@ -20,7 +20,7 @@ import {
 } from "../engine/types";
 import { makeRng, pick, Rng } from "../engine/rng";
 
-const SEER_CLAIM_TAG = "🔮 SEER —";
+export const SEER_CLAIM_TAG = "🔮 SEER —";
 
 function nameOf(view: PlayerView, id: number): string {
   return view.players.find((p) => p.id === id)?.name ?? `Seat ${id}`;

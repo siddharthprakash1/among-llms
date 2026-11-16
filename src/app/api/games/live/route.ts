@@ -26,6 +26,7 @@ export async function GET() {
     numPlayers: g.config.numPlayers,
     models: Array.from(new Set(g.players.map((p) => p.model))),
     day: g.events.filter((e) => e.kind === "phase").at(-1)?.day ?? 0,
+    human: Boolean(g.human),
   }));
   return NextResponse.json({ games });
 }

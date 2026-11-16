@@ -2,7 +2,7 @@
 
 import { ALIGNMENT_OF, GameConfig, Player, Role, ToggleableRole } from "./types";
 import { assignIdentities } from "./names";
-import { Rng, shuffle } from "./rng";
+import { Rng, makeRng, shuffle } from "./rng";
 
 export const MIN_PLAYERS = 5;
 export const MAX_PLAYERS = 12;
@@ -76,7 +76,7 @@ export function buildPlayers(config: GameConfig, rng: Rng): Player[] {
       `seatModels length (${config.seatModels.length}) does not match numPlayers (${config.numPlayers}).`
     );
   }
-  const dealtRoles = shuffle(rng, roleList);
+  const dealtRoles = shuffle(config.dealSeed === undefined ? rng : makeRng(config.dealSeed), roleList);
   const identities = assignIdentities(rng, config.numPlayers);
 
   return Array.from({ length: config.numPlayers }, (_, id) => {

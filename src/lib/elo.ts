@@ -4,6 +4,7 @@
 // sum of its per-seat deltas. Pure functions — easy to test and to persist.
 
 import { SeatOutcome } from "./engine/types";
+import { HUMAN_MODEL_ID } from "./human/types";
 
 export const DEFAULT_ELO = 1000;
 const K = 24;
@@ -71,6 +72,8 @@ function average(seats: SeatOutcome[], pre: Map<string, number>): number {
 
 /** Returns a new leaderboard with one game's results folded in. */
 export function applyGame(board: Leaderboard, outcomes: SeatOutcome[], gameId: string): Leaderboard {
+  // Games with a human seat are unrated: Elo is a model-vs-model benchmark.
+  if (outcomes.some((o) => o.model === HUMAN_MODEL_ID)) return board;
   const next = clone(board);
   const ensure = (m: string): ModelRating => {
     const base = emptyRating(m);

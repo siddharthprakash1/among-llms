@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DecisionRecord, GameEvent, Player } from "@/lib/engine/types";
-import { InspectorModel, describeDecision } from "@/lib/inspector";
+import { InspectorModel, describeDecision, noReasoningText, sourceChip } from "@/lib/inspector";
 import { ROLE_META, cn, modelLabel } from "@/lib/ui";
 
 interface Props {
@@ -37,21 +37,16 @@ export function useRevealOnOpen(open: boolean) {
 
 const ALIGN_TAG = { evil: "tag-evil", good: "tag-good", neutral: "tag-neutral" } as const;
 
-function Provenance({ rec }: { rec: DecisionRecord }) {
+const CHIP_TONE = { good: "tag-good", gold: "tag-gold", plain: "" } as const;
+
+function Provenance({ rec, actorModel }: { rec: DecisionRecord; actorModel?: string }) {
+  const source = sourceChip(rec, actorModel);
   return (
     <div>
       <div className="flex flex-wrap gap-1.5">
-        {rec.source === "model" && <span className="chip tag-good">● own decision</span>}
-        {rec.source === "bot" && <span className="chip">🤖 heuristic bot</span>}
-        {rec.source === "fallback" && (
-          <span
-            className="chip tag-gold"
-            title="The model's reply was unusable; the built-in heuristic made this move."
-          >
-            ⚠ fallback{rec.fallbackReason ? ` · ${rec.fallbackReason}` : ""}
-          </span>
-        )}
-        {rec.source === "unknown" && <span className="chip">source not reported</span>}
+        <span className={cn("chip", CHIP_TONE[source.tone])} title={source.title}>
+          {source.text}
+        </span>
         {rec.ruling !== "accepted" && (
           <span className="chip tag-gold" title={rec.rulingNote}>
             ⚠ engine {rec.ruling}
@@ -219,13 +214,13 @@ export default function MindInspector({ model, players, event, onJump, onClose, 
                     </div>
                   ) : (
                     <div className="text-sm text-[var(--muted)]">
-                      No reasoning was returned for this decision.
+                      {noReasoningText(current, actor?.model)}
                     </div>
                   )}
                 </div>
 
                 <div className="shrink-0">
-                  <Provenance rec={current} />
+                  <Provenance rec={current} actorModel={actor?.model} />
                 </div>
 
                 {siblings.length > 1 && (

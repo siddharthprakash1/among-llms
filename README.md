@@ -36,6 +36,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 - 🎭 **Seven roles, three-beat days** — Werewolf, Seer, Doctor, **Hunter** (dying breath takes someone with him), **Witch** (one heal, one poison), **Jester** (wins *alone* by getting himself lynched), Villager. Each day runs statements → **formal accusations** → **defenses** → vote, and the wolves coordinate in a private **pack chat** at night — visible in god view, where you watch the actual conspiracy.
 - 🧠 **Agents that remember** — every prompt carries a behavioral dossier ("voted twice against players revealed innocent", "accused by 3") so models can cite receipts, not vibes.
 - 🧠 **Reasoning inspector** — step through any game and read what each model was privately thinking, next to what it said out loud, with fallback and engine-override provenance.
+- 🎭 **Play a seat yourself** — take one chair at the table and play against the models: use your role's power at night, argue, accuse, defend and vote by day, and whisper in the pack chat if you are dealt a wolf. You see only what your role knows until the game ends.
 - 📡 **Live mode** — start a match and watch it unfold in real time over SSE: typing indicators while a model thinks, scrub back like a sports stream, snap to the live edge. Every finished game becomes a permalink replay.
 - 🏆 **Tournaments & model profiles** — round-robin seasons and knockout brackets (best-of-N, parallel execution for API models), plus per-model profile pages: ELO history sparkline, deception/detection, **vote accuracy** (how often their votes hit actual wolves), survival rate, per-role record, head-to-head.
 - ⚔️ **Mixed-model tables** — sit GPT, Claude, Llama, Qwen, Mistral, and the built-in bots at the *same* table and watch them turn on each other.
@@ -114,6 +115,18 @@ ANTHROPIC_MODELS=claude-haiku-4-5-20251001,claude-sonnet-4-6
 
 Every configured model shows up as a chip on the home page. Select any mix and run a match. Requests use strict JSON output where supported; anything unparseable falls back to the heuristic so games always finish.
 
+## Play a seat yourself
+
+On the home page, pick the table size and the models, then open **🎭 Play a seat yourself**, choose a role (or let the deal surprise you) and take your seat. The play screen at `/play/<id>` shows the table, your role card with everything your role privately knows, the feed, and an action dock that asks for your move when it is your turn.
+
+- **You only see what your role sees.** Your browser gets its own redacted stream: no other roles, no private night actions, no model reasoning. When you die you become a ghost and see everything; at game over every role is revealed and the full replay (3D stage, reasoning inspector) opens at `/game/<id>`.
+- **The seat is tied to your browser** by an HttpOnly cookie. Another browser cannot play it, and the spectator view of a running human game stays sealed until the game ends, so a second tab cannot peek.
+- **Every turn is on a clock** (45 to 120 seconds, shown in the dock). If it runs out, the built-in heuristic bot moves for you; miss two turns in a row and the seat goes on autopilot until you press **Take back control**. An abandoned game always finishes.
+- **Claiming Seer in plain words is a bluff anyone may try.** The formal 🔮 declaration that the bots treat as proof is only offered to a real Seer with a confirmed werewolf, and cannot be typed.
+- **Unrated.** Human games are saved and replayable, but they never touch the ELO leaderboard or model profiles: those only count model-vs-model games.
+- **Single long-lived Node process.** Like live mode, a game in progress lives in server memory (`npm run dev` or `npm start`). It does not survive a restart and cannot run on serverless or multi-instance hosting. At most 3 human games run at once.
+- `human` is a reserved model id: it cannot be registered as an env model, and it is dropped from tournament rosters.
+
 ## The game
 
 A trimmed-but-real game of Werewolf for 5–12 players. A 7-player table deals **2 Werewolves, a Seer, a Doctor, a Hunter, and 2 Villagers**; the Witch joins at 8+ players and the Jester at 9+ (each special role can be toggled off per match).
@@ -136,9 +149,10 @@ src/
   lib/replay.ts    fold a transcript into the state to render at any step
   lib/director.ts  pure state→camera-shot mapping for the 3D auto-director
   lib/live.ts      in-process registry powering SSE live games
+  lib/human/       the human seat: per-seat redaction, prompts, timers, text sanitizing
   lib/sound.ts     synthesized (no-asset) Web Audio cues
   lib/store/       pluggable JSON store (tmpdir fallback for read-only hosts)
-  app/             home · /game/[id] (replay or live) · /leaderboard ·
+  app/             home · /game/[id] (replay or live) · /play/[id] (your seat) · /leaderboard ·
                    /tournaments · /models/[id] · API routes (+ SSE stream)
   components/      Scene3D · GameTable · EventFeed · ReplayPlayer · LiveGame ·
                    TournamentView · ModelProfile · EloSparkline · …
@@ -163,7 +177,7 @@ Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Framer M
 ## Roadmap
 
 - More games: Secret Hitler, Avalon, Diplomacy
-- Human-in-the-seat: play against the models
+- Human seat follow-ups: a redacted public spectator view of running human games, more than one human per table
 - A public hosted arena
 
 ## Contributing

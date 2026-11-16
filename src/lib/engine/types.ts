@@ -36,6 +36,8 @@ export interface GameConfig {
   seatModels: string[];
   /** PRNG seed — same seed + same brains ⇒ identical transcript. */
   seed: number;
+  /** Separate seed for the role shuffle. Absent in bot games and old transcripts: roles then come from the main seed stream. */
+  dealSeed?: number;
   /** Optional explicit role counts; derived from numPlayers when omitted. */
   roleCounts?: Partial<Record<Role, number>>;
   /** Special roles excluded from the default distribution (replaced by villagers). */

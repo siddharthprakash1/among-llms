@@ -26,14 +26,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Ambience />
         <div className="relative z-10 min-h-screen flex flex-col">
           <header className="sticky top-0 z-30 border-b border-[var(--border)] backdrop-blur-md bg-[color-mix(in_srgb,var(--bg)_78%,transparent)]">
-            <div className="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between gap-3">
+              <Link href="/" className="flex items-center gap-2.5 group shrink-0">
                 <span className="text-2xl">🐺</span>
                 <span className="display text-2xl text-[var(--text)] group-hover:text-[var(--gold)] transition-colors">
                   Among&nbsp;LLMs
                 </span>
               </Link>
-              <nav className="flex items-center gap-1 sm:gap-4 text-sm">
+              <nav className="flex items-center gap-1 sm:gap-4 text-sm min-w-0 overflow-x-auto nav-scroll whitespace-nowrap">
                 <Link href="/" className="link px-2 py-1">
                   Arena
                 </Link>

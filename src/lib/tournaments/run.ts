@@ -9,6 +9,7 @@ import { buildBrainFactory } from "../agents/brains";
 import { MAX_PLAYERS, MIN_PLAYERS } from "../engine/roles";
 import { applyGame } from "../elo";
 import { store } from "../store";
+import { HUMAN_MODEL_ID } from "../human/types";
 import { KnockoutMatch, Tournament, TournamentConfig, TournamentGameRef } from "./types";
 import {
   advanceBracket,
@@ -38,7 +39,9 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, M
 
 function buildTournamentConfig(input: CreateTournamentInput): TournamentConfig {
   const roster = Array.from(
-    new Set((input.roster ?? ["mock", "hunter-bot", "sentinel-bot"]).filter(Boolean))
+    new Set((input.roster ?? ["mock", "hunter-bot", "sentinel-bot"]).filter(
+      (m) => Boolean(m) && m !== HUMAN_MODEL_ID
+    ))
   ).slice(0, 12);
   while (roster.length < 2) roster.push(roster.length === 0 ? "mock" : "hunter-bot");
   const format = input.format === "knockout" ? "knockout" : "round_robin";

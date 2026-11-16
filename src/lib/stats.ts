@@ -4,6 +4,7 @@
 
 import { Transcript, Player, SeatOutcome } from "./engine/types";
 import { ModelRating, emptyRating } from "./elo";
+import { HUMAN_MODEL_ID } from "./human/types";
 
 export interface HeadToHead {
   opponent: string;
@@ -176,7 +177,7 @@ export async function assembleProfile(model: string): Promise<ModelProfile | nul
 
   const rating = board[model];
   const matching = summaries
-    .filter((s) => s.models.includes(model))
+    .filter((s) => s.models.includes(model) && !s.models.includes(HUMAN_MODEL_ID))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, TRANSCRIPTS_FOLD_CAP);
 

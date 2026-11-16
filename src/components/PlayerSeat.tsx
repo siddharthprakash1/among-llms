@@ -4,16 +4,39 @@ import { motion } from "framer-motion";
 import { ReplaySeat, Highlight } from "@/lib/replay";
 import { ROLE_META, cn, modelLabel } from "@/lib/ui";
 
+export interface SeatMark {
+  emoji: string;
+  label: string;
+}
+
 interface Props {
   seat: ReplaySeat;
   highlight: Highlight;
   showRole: boolean;
   thinkingId?: number;
   style?: React.CSSProperties;
+  you?: boolean;
+  mark?: SeatMark;
+  /** undefined = no target pick is open; false = a pick is open and this seat is not a legal target. */
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (id: number) => void;
 }
 
-export default function PlayerSeat({ seat, highlight, showRole, thinkingId, style }: Props) {
-  const speaking = highlight.speakingId === seat.id;
+export default function PlayerSeat({
+  seat,
+  highlight,
+  showRole,
+  thinkingId,
+  style,
+  you,
+  mark,
+  selectable,
+  selected,
+  onSelect,
+}: Props) {
+  // While a target pick is open the gold ring means "selected", so the last speaker gives it up.
+  const speaking = highlight.speakingId === seat.id && selectable === undefined;
   const killed = highlight.killId === seat.id;
   const saved = highlight.saveId === seat.id;
   const checked = highlight.checkId === seat.id;
@@ -22,7 +45,9 @@ export default function PlayerSeat({ seat, highlight, showRole, thinkingId, styl
   const reveal = showRole || seat.revealed;
   const meta = ROLE_META[seat.role];
 
-  const ringColor = !seat.alive
+  const ringColor = selected
+    ? "var(--gold)"
+    : !seat.alive
     ? "transparent"
     : speaking
     ? "var(--gold)"
@@ -42,10 +67,23 @@ export default function PlayerSeat({ seat, highlight, showRole, thinkingId, styl
       : "color-mix(in srgb, var(--good) 55%, transparent)"
     : "var(--border)";
 
+  const Root = selectable ? "button" : "div";
+
   return (
-    <div
-      style={style}
-      className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-[88px]"
+    <Root
+      {...(selectable
+        ? {
+            type: "button" as const,
+            onClick: () => onSelect?.(seat.id),
+            "aria-pressed": !!selected,
+            "aria-label": `Choose ${seat.name}`,
+          }
+        : {})}
+      style={{ ...style, opacity: selectable === false ? 0.45 : undefined }}
+      className={cn(
+        "absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-[88px] transition-opacity",
+        selectable && "seat-pick"
+      )}
     >
       <div className="relative">
         <motion.div
@@ -56,7 +94,10 @@ export default function PlayerSeat({ seat, highlight, showRole, thinkingId, styl
           transition={{ type: "spring", stiffness: 300, damping: 22 }}
           className={cn(
             "relative grid place-items-center rounded-full w-[58px] h-[58px] text-[28px] bg-[var(--panel-2)]",
-            speaking && "ring-speaking"
+            speaking && "ring-speaking",
+            selectable && !selected && !speaking && "seat-pulse",
+            selected && "seat-selected",
+            you && !selected && "seat-you"
           )}
           style={{ border: `2.5px solid ${ringColor}` }}
         >
@@ -74,6 +115,15 @@ export default function PlayerSeat({ seat, highlight, showRole, thinkingId, styl
           )}
         </motion.div>
         {/* Outside the motion.div: a dead seat's 0.4 opacity must not dim the badge. */}
+        {mark && (
+          <span
+            title={mark.label}
+            aria-label={mark.label}
+            className="absolute -top-1.5 -left-1.5 text-[12px] bg-[var(--bg)] rounded-full w-[22px] h-[22px] grid place-items-center border border-[var(--border)]"
+          >
+            {mark.emoji}
+          </span>
+        )}
         {thinking && (
           <span
             title="Deciding"
@@ -88,10 +138,15 @@ export default function PlayerSeat({ seat, highlight, showRole, thinkingId, styl
         <div className={cn("text-[13px] font-semibold", !seat.alive && "line-through opacity-60")}>
           {seat.name}
         </div>
+        {you && (
+          <div className="text-[9px] font-bold tracking-[0.14em] text-[var(--gold)] leading-none mt-0.5 mb-0.5">
+            YOU
+          </div>
+        )}
         <div className="text-[10px] text-[var(--muted)] truncate max-w-[84px]">
           {modelLabel(seat.model)}
         </div>
       </div>
-    </div>
+    </Root>
   );
 }

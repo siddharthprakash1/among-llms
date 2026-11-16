@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DecisionRecord, GameConfig, GameEvent, Player, Transcript } from "@/lib/engine/types";
 import { deriveState } from "@/lib/replay";
 import { playCue } from "@/lib/sound";
@@ -21,6 +22,8 @@ interface Meta {
   config: GameConfig;
   players: Player[];
   status: string;
+  /** A running game with a human seat: the stream sends nothing but this meta. */
+  sealed?: boolean;
 }
 
 export default function LiveGame({ id }: { id: string }) {
@@ -32,6 +35,11 @@ export default function LiveGame({ id }: { id: string }) {
   // null = the inspector follows the live edge
   const [pinnedSeq, setPinnedSeq] = useState<number | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [sealed, setSealed] = useState(false);
+  // Bumped to re-open the stream while the sealed card is up.
+  const [retry, setRetry] = useState(0);
+  const [ownsSeat, setOwnsSeat] = useState(false);
+  const router = useRouter();
   const seenCue = useRef(-1);
   const inspectorRef = useRevealOnOpen(minds);
   const mindsBtnRef = useRef<HTMLButtonElement>(null);
@@ -43,6 +51,7 @@ export default function LiveGame({ id }: { id: string }) {
     // out of the live registry) — show a not-found state instead of spinning.
     const timeout = setTimeout(() => {
       if (!gotMeta) {
+        setSealed(false);
         setNotFound(true);
         es.close();
       }
@@ -50,7 +59,17 @@ export default function LiveGame({ id }: { id: string }) {
     es.addEventListener("meta", (e) => {
       gotMeta = true;
       try {
-        setMeta(JSON.parse((e as MessageEvent).data));
+        const m = JSON.parse((e as MessageEvent).data) as Meta;
+        if (m.sealed) {
+          // The server closes a sealed stream right after this; closing here
+          // stops the browser from reconnecting in a loop.
+          clearTimeout(timeout);
+          es.close();
+          setSealed(true);
+          return;
+        }
+        setSealed(false);
+        setMeta(m);
       } catch {
         /* ignore */
       }
@@ -79,7 +98,53 @@ export default function LiveGame({ id }: { id: string }) {
       clearTimeout(timeout);
       es.close();
     };
-  }, [id]);
+  }, [id, retry]);
+
+  // Once the human game is persisted the page itself can render the replay. If
+  // it ended without being saved (a failed write, an abandoned game) the stream
+  // is no longer sealed, so it is re-opened: still sealed means the card stays.
+  useEffect(() => {
+    if (!sealed) return;
+    let cancelled = false;
+    const poll = setInterval(async () => {
+      // Asking for the transcript of a game that is still being played is a 404
+      // every time, which fills the console; the live list answers 200.
+      try {
+        const res = await fetch("/api/games/live", { cache: "no-store" });
+        const body = (await res.json()) as { games?: { id: string }[] };
+        if (cancelled || body.games?.some((g) => g.id === id)) return;
+      } catch {
+        /* fall through to the transcript check */
+      }
+      let persisted = false;
+      try {
+        persisted = (await fetch(`/api/games/${id}`, { cache: "no-store" })).ok;
+      } catch {
+        /* treated as not persisted */
+      }
+      if (cancelled) return;
+      if (persisted) router.refresh();
+      else setRetry((n) => n + 1);
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [sealed, id, router]);
+
+  // Only the browser holding the seat cookie is offered the way back to it.
+  useEffect(() => {
+    if (!sealed) return;
+    let cancelled = false;
+    fetch(`/api/games/${id}/seat`, { cache: "no-store" })
+      .then((res) => {
+        if (!cancelled) setOwnsSeat(res.ok);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sealed, id]);
 
   const transcript = useMemo<Transcript | null>(() => {
     if (!meta) return null;
@@ -138,6 +203,27 @@ export default function LiveGame({ id }: { id: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [minds, prevDecision, nextDecision]);
+
+  if (sealed) {
+    return (
+      <div className="glass p-12 text-center space-y-3">
+        <div className="text-4xl">🎭</div>
+        <div className="display text-2xl">A human is playing this table.</div>
+        <div className="text-sm text-[var(--muted)]">
+          Spectating opens when the game ends. This page will open by itself.
+        </div>
+        {ownsSeat ? (
+          <Link href={`/play/${id}`} className="btn btn-primary" prefetch={false}>
+            Return to your seat
+          </Link>
+        ) : (
+          <Link href="/" className="btn btn-primary">
+            Back to the arena
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   if (notFound) {
     return (

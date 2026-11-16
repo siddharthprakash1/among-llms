@@ -3,9 +3,36 @@
 // Local-first: this lives in the Node server process (dev / next start). If the
 // process dies mid-game the game is abandoned (never persisted, never rated).
 
-import { DecisionRecord, GameConfig, GameEvent, Player } from "./engine/types";
+import { Alignment, DecisionRecord, GameConfig, GameEvent, Player, Role } from "./engine/types";
+import type { SeatAnswer, SeatEvent, SeatPrompt } from "./human/types";
+import { projectEvent } from "./human/project";
 
 export type LiveStatus = "running" | "finished" | "abandoned";
+
+export interface PendingPrompt {
+  prompt: SeatPrompt;
+  deadlineAt: number | null; // epoch ms; null until armed
+  timer: ReturnType<typeof setTimeout> | null;
+  resolve: (answer: SeatAnswer | null) => void;
+}
+
+/** The one human seat of a game. Plain data, so it survives Next's module-instance split. */
+export interface HumanSeat {
+  seatId: number;
+  role: Role;
+  alignment: Alignment;
+  tokenHash: string; // sha256 hex of the seat token
+  events: SeatEvent[]; // dense projected buffer (index === SSE id)
+  eventListeners: Set<(ev: SeatEvent, seq: number) => void>;
+  dead: boolean;
+  ghost: boolean;
+  pending: PendingPrompt | null;
+  promptSeq: number;
+  missed: number; // consecutive timeouts
+  autopilot: boolean;
+  lastResolved: { id: string; outcome: "submitted" | "timeout" } | null;
+  stateListeners: Set<() => void>; // fired on any pending/autopilot change
+}
 
 export interface LiveGame {
   id: string;
@@ -17,6 +44,7 @@ export interface LiveGame {
   decisions: DecisionRecord[];
   status: LiveStatus;
   listeners: Set<(event: GameEvent, index: number) => void>;
+  human?: HumanSeat;
 }
 
 // Next.js gives route handlers and RSC pages separate module instances, so a
@@ -32,7 +60,8 @@ export function createLive(
   id: string,
   createdAt: string,
   config: GameConfig,
-  players: Player[]
+  players: Player[],
+  human?: HumanSeat
 ): LiveGame {
   const game: LiveGame = {
     id,
@@ -43,6 +72,7 @@ export function createLive(
     decisions: [],
     status: "running",
     listeners: new Set(),
+    ...(human ? { human } : {}),
   };
   registry.set(id, game);
   // prune oldest finished games to bound memory
@@ -66,6 +96,88 @@ export function pushLive(id: string, event: GameEvent, index: number): void {
   if (!game) return;
   game.events[index] = event;
   for (const l of game.listeners) l(event, index);
+  if (game.human) {
+    // onEvent runs inside the engine's events.push: nothing here may throw into simulate().
+    try {
+      projectForSeat(game, game.human, event, index);
+    } catch (err) {
+      if (!seatErrorLogged.has(id)) {
+        seatErrorLogged.add(id);
+        console.error("seat projection failed", id, err);
+      }
+    }
+  }
+}
+
+const seatErrorLogged = new Set<string>();
+
+function projectForSeat(game: LiveGame, seat: HumanSeat, event: GameEvent, index: number): void {
+  const push = (e: SeatEvent) => {
+    seat.events.push(e);
+    const seq = seat.events.length - 1;
+    for (const l of seat.eventListeners) {
+      try {
+        l(e, seq);
+      } catch {
+        seat.eventListeners.delete(l);
+      }
+    }
+  };
+  // A dead human Hunter stays blind until their own shot is logged: with two
+  // hunters that shot is asked only after the next phase event.
+  const hunterDone =
+    seat.role !== "hunter" ||
+    game.events.some((e) => e?.kind === "hunter_shot" && e.hunterId === seat.seatId);
+  if (event.kind === "phase" && seat.dead && !seat.ghost && hunterDone) {
+    seat.ghost = true;
+    push({ kind: "seat_reveal", final: false, players: game.players.map((p) => ({ ...p })) });
+  }
+  if (event.kind === "game_over") {
+    push({
+      kind: "seat_reveal",
+      final: true,
+      players: game.players.map((p) => ({ ...p })),
+      events: game.events.slice(0, index),
+    });
+  }
+  const projected = projectEvent(
+    event,
+    { seatId: seat.seatId, role: seat.role, alignment: seat.alignment },
+    seat.ghost
+  );
+  if (projected) push(projected);
+  if (event.kind === "death" && event.playerId === seat.seatId) seat.dead = true;
+}
+
+export function subscribeSeat(id: string, fn: (ev: SeatEvent, seq: number) => void): () => void {
+  const seat = registry.get(id)?.human;
+  if (!seat) return () => {};
+  seat.eventListeners.add(fn);
+  return () => {
+    seat.eventListeners.delete(fn);
+  };
+}
+
+/** Calls every state listener; a listener that throws is removed and never rethrows. */
+export function fireSeatState(seat: HumanSeat): void {
+  for (const l of seat.stateListeners) {
+    try {
+      l();
+    } catch {
+      seat.stateListeners.delete(l);
+    }
+  }
+}
+
+/** True while a human game must not be shown to spectators. */
+export function isSealed(game: LiveGame): boolean {
+  return !!game.human && game.status === "running" && !game.events.some((e) => e?.kind === "game_over");
+}
+
+/** Test seam only: clears pending seat timers and empties the registry. Never imported by app code. */
+export function __resetLiveForTests(): void {
+  for (const g of registry.values()) if (g.human?.pending?.timer) clearTimeout(g.human.pending.timer);
+  registry.clear();
 }
 
 export function pushLiveDecision(id: string, record: DecisionRecord): void {

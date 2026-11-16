@@ -179,6 +179,14 @@ body {
   color: var(--text);
 }
 
+/* The header nav scrolls sideways on phones instead of widening the page. */
+.nav-scroll {
+  scrollbar-width: none;
+}
+.nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .scrollbar-thin::-webkit-scrollbar {
   width: 8px;
 }
@@ -256,12 +264,163 @@ body {
   animation: scene-fade 0.8s ease both;
 }
 
+/* ---- human seat: target picking, action dock, role card ---- */
+
+.seat-pick {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+.seat-pick:focus-visible {
+  outline: none;
+}
+.seat-pick:focus-visible > div:first-child > div:first-child {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 55%, transparent);
+}
+@keyframes seat-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 22%, transparent);
+  }
+}
+.seat-pulse {
+  animation: seat-pulse 2s ease-in-out infinite;
+}
+.seat-selected {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent),
+    0 0 22px -2px color-mix(in srgb, var(--gold) 70%, transparent);
+}
+.seat-you {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 28%, transparent);
+}
+
+/* More opaque than .glass: on small screens the dock is sticky over the feed. */
+.dock {
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 -12px 40px -18px rgba(0, 0, 0, 0.8);
+  /* Sticky at the bottom: never taller than the screen it sits on. */
+  max-height: calc(100dvh - 5rem);
+  overflow-y: auto;
+}
+.dock-blood {
+  border-color: color-mix(in srgb, var(--blood) 55%, transparent);
+  box-shadow:
+    0 -12px 40px -18px rgba(0, 0, 0, 0.8),
+    inset 0 0 40px -22px var(--blood);
+}
+.dock-idle {
+  animation: twinkle 2.6s ease-in-out infinite;
+}
+.dock-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.dock-bar > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--gold);
+  transform-origin: left center;
+  transition: background 0.3s ease;
+}
+
+.field {
+  width: 100%;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  resize: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field::placeholder {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.field:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--gold) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 14%, transparent);
+}
+
+.target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.target-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.target-chip[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, var(--panel-2));
+}
+.target-chip:focus-visible,
+.dock .btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  outline-offset: 2px;
+}
+.target-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-gold-outline {
+  background: color-mix(in srgb, var(--gold) 8%, var(--panel-2));
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  color: var(--gold);
+}
+.btn-gold-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gold) 15%, var(--panel-2));
+}
+.btn-blood {
+  background: linear-gradient(180deg, #ea6a7e, #c53d55);
+  color: #2a070d;
+  box-shadow: 0 8px 24px -10px rgba(224, 85, 107, 0.7);
+}
+.btn-blood:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.role-veil {
+  filter: blur(9px);
+  user-select: none;
+  pointer-events: none;
+}
+
 /* respect reduced-motion: kill ambient loops */
 @media (prefers-reduced-motion: reduce) {
   .ring-speaking,
   .float-in,
   .fx-death,
   .fx-shield,
+  .seat-pulse,
+  .dock-idle,
   [data-ambient] * {
     animation: none !important;
   }

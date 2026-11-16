@@ -1,4 +1,12 @@
-import { decisionsRemaining, decisionsThrough, getLive, parseLastEventId, subscribeLive } from "@/lib/live";
+import {
+  decisionsRemaining,
+  decisionsThrough,
+  getLive,
+  isSealed,
+  parseLastEventId,
+  subscribeLive,
+} from "@/lib/live";
+import { delayFor } from "@/lib/pacing";
 import { getGame } from "@/lib/games";
 import { DecisionRecord, GameEvent } from "@/lib/engine/types";
 
@@ -6,38 +14,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// Paced emission so mock games (which simulate instantly) still feel live, and
-// real-model games stream at their natural thinking speed.
-function delayFor(ev: GameEvent): number {
-  switch (ev.kind) {
-    case "statement":
-      return 1500;
-    case "accusation":
-    case "defense":
-      return 1200;
-    case "phase":
-      return 900;
-    case "death":
-      return 1300;
-    case "wolf_chat":
-      return 900;
-    case "seer_check":
-    case "doctor_save":
-    case "witch_action":
-      return 800;
-    case "wolf_kill":
-      return 700;
-    case "vote":
-      return 350;
-    case "vote_result":
-      return 900;
-    case "game_over":
-      return 500;
-    default:
-      return 600;
-  }
-}
 
 // SSE for a game. Emits `meta` (players/config), then paced events from
 // Last-Event-ID+1, tailing live events until game_over. Serves both running
@@ -122,6 +98,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
       const live = getLive(id);
       if (live) {
+        // A running human game is sealed: the god stream (and its decision
+        // frames) would let the player peek from a second tab.
+        if (isSealed(live)) {
+          sendMeta({ id, status: "running", sealed: true });
+          safeClose();
+          return;
+        }
         decisionSource = () => live.decisions ?? [];
         sendMeta({
           id,

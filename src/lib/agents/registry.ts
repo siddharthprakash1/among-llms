@@ -19,6 +19,7 @@ export interface ModelInfo {
 }
 
 import { MockStyle, DEFAULT_STYLE } from "./mockBrain";
+import { HUMAN_MODEL_ID } from "../human/types";
 
 /**
  * Built-in offline bots. They use the heuristic MockBrain with different
@@ -67,7 +68,8 @@ function buildRegistry(): Registry {
     available: true,
   }));
   const configs = new Map<string, ProviderConfig>();
-  const seen = new Set<string>(BUILTIN_BOTS.map((b) => b.id));
+  // The reserved human seat id can never be claimed by an env-configured model.
+  const seen = new Set<string>([...BUILTIN_BOTS.map((b) => b.id), HUMAN_MODEL_ID]);
 
   const add = (info: ModelInfo, cfg: ProviderConfig) => {
     if (seen.has(info.id)) return;

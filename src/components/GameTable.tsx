@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import PlayerSeat from "./PlayerSeat";
+import PlayerSeat, { SeatMark } from "./PlayerSeat";
 import { Highlight, ReplaySeat, ReplayState } from "@/lib/replay";
 
 interface Props {
@@ -12,9 +12,27 @@ interface Props {
   day: number;
   showRole: boolean;
   thinkingId?: number;
+  youId?: number;
+  marks?: Record<number, SeatMark>;
+  selectableIds?: number[];
+  selectedId?: number | null;
+  onSelect?: (id: number) => void;
 }
 
-export default function GameTable({ seats, highlight, banner, phase, day, showRole, thinkingId }: Props) {
+export default function GameTable({
+  seats,
+  highlight,
+  banner,
+  phase,
+  day,
+  showRole,
+  thinkingId,
+  youId,
+  marks,
+  selectableIds,
+  selectedId,
+  onSelect,
+}: Props) {
   const n = seats.length;
   const isNight = phase === "night";
 
@@ -76,6 +94,11 @@ export default function GameTable({ seats, highlight, banner, phase, day, showRo
             highlight={highlight}
             showRole={showRole}
             thinkingId={thinkingId}
+            you={seat.id === youId}
+            mark={marks?.[seat.id]}
+            selectable={selectableIds ? selectableIds.includes(seat.id) : undefined}
+            selected={selectedId === seat.id}
+            onSelect={onSelect}
             style={{ left: `${left}%`, top: `${top}%` }}
           />
         );
