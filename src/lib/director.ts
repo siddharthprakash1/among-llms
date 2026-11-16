@@ -74,8 +74,9 @@ export function directShot(input: DirectorInput): Shot {
   if (killSeat) {
     return {
       kind: "kill",
-      position: portrait(killSeat, 2.4, 0.5), // low, close, dramatic
-      target: [killSeat[0], 0.9, killSeat[2]],
+      // Low, close, dramatic. Tilted up so the victim's nameplate stays below the phase banner.
+      position: portrait(killSeat, 3.0, 0.6),
+      target: [killSeat[0], 1.35, killSeat[2]],
       fov: 38,
       focusSeatId: highlight.killId ?? highlight.eliminatedId,
     };
@@ -85,8 +86,10 @@ export function directShot(input: DirectorInput): Shot {
   if (speakSeat) {
     return {
       kind: "speaker",
-      position: portrait(speakSeat, 3.0, 1.6), // eye-level push-in
-      target: [speakSeat[0], 1.1, speakSeat[2]],
+      // Eye-level push-in. Aimed above the head so the floating nameplate (and its
+      // thinking badge) sits mid-frame, clear of the phase banner along the top.
+      position: portrait(speakSeat, 3.4, 1.7),
+      target: [speakSeat[0], 1.4, speakSeat[2]],
       fov: 40,
       focusSeatId: highlight.speakingId,
     };

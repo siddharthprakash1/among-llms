@@ -18,6 +18,10 @@ Runs **offline with zero setup** using built-in bots. Plug in Ollama, OpenAI, An
 
 <br/>
 
+![A Hunter's dying shot, dawn, and the Seer naming a werewolf who shrugs it off, on the 3D stage](docs/screenshots/demo.gif)
+
+<br/>
+
 ![Among LLMs — home](docs/screenshots/home.png)
 
 </div>
@@ -32,7 +36,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 
 ## Features
 
-- 🎬 **Cinematic 3D stage with an auto-director** — a moonlit village table rendered in three.js, with a camera that idles in slow orbit, pushes in on whoever is speaking, drops low for night kills, and cranes over the vote. Falls back to a polished 2D "Classic view" automatically when WebGL is unavailable or reduced-motion is set.
+- 🎬 **Cinematic 3D stage with an auto-director** — a moonlit village table rendered in three.js, with a camera that idles in slow orbit, pushes in on whoever is speaking, and drops low and close for every night kill and lynching. Falls back to a polished 2D "Classic view" automatically when WebGL is unavailable or reduced-motion is set.
 - 🎭 **Seven roles, three-beat days** — Werewolf, Seer, Doctor, **Hunter** (dying breath takes someone with him), **Witch** (one heal, one poison), **Jester** (wins *alone* by getting himself lynched), Villager. Each day runs statements → **formal accusations** → **defenses** → vote, and the wolves coordinate in a private **pack chat** at night — visible in god view, where you watch the actual conspiracy.
 - 🧠 **Agents that remember** — every prompt carries a behavioral dossier ("voted twice against players revealed innocent", "accused by 3") so models can cite receipts, not vibes.
 - 🧠 **Reasoning inspector** — step through any game and read what each model was privately thinking, next to what it said out loud, with fallback and engine-override provenance.
@@ -48,11 +52,17 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 
 <div align="center">
 
-![Dawn breaks on the 3D stage](docs/screenshots/stage-wide.png)
-*Dawn, Day 1. The director frames the Seer's claim while the Doctor's corpse still sits at the table — role revealed, moon giving way to the sun.*
+![The whole village on the 3D stage](docs/screenshots/stage-wide.png)
+*The first night falls. The director holds the whole village in one establishing shot; with roles shown, the two werewolves already sit red among the villagers.*
 
 ![The table talks](docs/screenshots/stage-3d.png)
-*The camera pushes in on the accused while the feed carries the debate: a Seer claim, pile-on accusations, and a wolf steering the mob.*
+*Day 1. The Seer has named Gray a werewolf and the accusations pile up in the feed; the camera pushes in on Gray for his rebuttal. The night's two victims still lie at the table, roles revealed.*
+
+![Reasoning inspector](docs/screenshots/inspector.png)
+*The reasoning inspector, open on the last werewolf (a local `qwen2.5:3b`). Said aloud: "Let's gather more information… we need to be cautious." Privately thought: "…start planning a stealth kill."*
+
+![Playing a seat yourself](docs/screenshots/play.png)
+*Play a seat yourself: dealt a Werewolf, you whisper with your packmate in the pack chat, then the action dock asks who dies tonight, on a clock.*
 
 </div>
 
@@ -61,7 +71,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 <div align="center">
 
 ![Knockout bracket](docs/screenshots/tournament.png)
-*A knockout cup: best-of-3 head-to-head tables, byes auto-advance, every game chip links to its replay.*
+*A knockout cup: best-of-3 head-to-head tables, winners advance to the final, every game chip links to its replay.*
 
 ![Model profile](docs/screenshots/profile.png)
 *Every model gets a dossier of its own: ELO sparkline, deception vs. detection, vote accuracy, survival, and a per-role record.*
@@ -83,7 +93,7 @@ npm run dev
 # open http://localhost:3000
 ```
 
-That's it. With no configuration, the arena runs three built-in bots (`Balanced`, `Hunter`, `Sentinel`) — different heuristic play-styles that produce balanced, watchable games. Hit **Run a match** (or start a tournament) and watch.
+That's it. With no configuration, the arena runs three built-in bots (`Mock bot`, `hunter-bot`, `sentinel-bot`) — different heuristic play-styles that produce balanced, watchable games. Hit **Run a match** (or start a tournament) and watch.
 
 ## Add real models
 
@@ -164,7 +174,7 @@ src/
 npm test
 ```
 
-493 tests cover the engine and scoring: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, and a 60-game balance smoke.
+493 tests cover the engine, scoring, the human seat and the hosting guards: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, a 60-game balance smoke, human-seat redaction and action legality, turn timers and autopilot, the sealed spectator stream, public-mode/admin-token/rate-limit guards on every start route, and atomic file-store writes.
 
 ## Hosting a public arena
 

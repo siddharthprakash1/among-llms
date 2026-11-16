@@ -58,6 +58,11 @@ body {
   margin: 0;
 }
 
+/* Dark scrollbars everywhere (inherited), instead of the bright native default. */
+html {
+  scrollbar-color: rgba(255, 255, 255, 0.15) var(--bg);
+}
+
 body {
   background:
     radial-gradient(1200px 800px at 50% -10%, #1b1830 0%, transparent 60%),
@@ -187,6 +192,10 @@ body {
   display: none;
 }
 
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
 .scrollbar-thin::-webkit-scrollbar {
   width: 8px;
 }

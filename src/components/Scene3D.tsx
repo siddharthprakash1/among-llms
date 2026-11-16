@@ -89,7 +89,7 @@ function Pawn({
   const checked = highlight.checkId === seat.id;
 
   const bodyColor = !seat.alive
-    ? "#3a3550"
+    ? "#5b5578"
     : reveal
     ? TEAM_COLOR[meta.align]
     : "#8a7f9e";
@@ -120,7 +120,7 @@ function Pawn({
           emissiveIntensity={emissiveIntensity}
           roughness={0.7}
           transparent
-          opacity={seat.alive ? 1 : 0.55}
+          opacity={seat.alive ? 1 : 0.8}
         />
       </mesh>
       {/* head */}
@@ -132,7 +132,7 @@ function Pawn({
           emissiveIntensity={emissiveIntensity * 0.6}
           roughness={0.6}
           transparent
-          opacity={seat.alive ? 1 : 0.55}
+          opacity={seat.alive ? 1 : 0.8}
         />
       </mesh>
       {/* floating nameplate / avatar */}
@@ -144,9 +144,10 @@ function Pawn({
             <div
               style={{
                 position: "absolute",
-                top: -24,
-                left: "50%",
-                transform: "translateX(-50%)",
+                // Beside the avatar, not above it: in a close-up the space above the
+                // nameplate belongs to the phase banner.
+                top: 2,
+                left: "calc(50% + 18px)",
                 width: 22,
                 height: 22,
                 display: "grid",
@@ -201,7 +202,7 @@ function Lantern({ pos }: { pos: Vec3 }) {
         <sphereGeometry args={[0.16, 12, 12]} />
         <meshStandardMaterial color="#ffcf6b" emissive="#ffbb44" emissiveIntensity={1.6} />
       </mesh>
-      <pointLight position={[0, 1.85, 0]} color="#ffbb55" intensity={6} distance={6} decay={2} />
+      <pointLight position={[0, 1.85, 0]} color="#ffbb55" intensity={9} distance={8} decay={2} />
     </group>
   );
 }
@@ -211,7 +212,9 @@ function Environment({ phase }: { phase: ReplayPhase }) {
   const moonColor = night ? "#aebbff" : "#ffcf9a";
   const treeRing = useMemo<Vec3[]>(() => ringPositions(14, 9), []);
   const hutRing = useMemo<Vec3[]>(() => ringPositions(5, 11).map((p) => [p[0], 0, p[2]]), []);
-  const lanternRing = useMemo<Vec3[]>(() => ringPositions(4, 6).map((p) => [p[0], 0, p[2]]), []);
+  // Outside every director camera position (the widest close-up sits at radius 7.6),
+  // so a lamp post never stands between the camera and the seat it is framing.
+  const lanternRing = useMemo<Vec3[]>(() => ringPositions(4, 8.1).map((p) => [p[0], 0, p[2]]), []);
 
   return (
     <>

@@ -251,7 +251,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
 
       {/* main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
-        <div className="glass overflow-hidden relative min-h-[440px] lg:min-h-[560px]">
+        <div className="glass overflow-hidden relative min-h-[440px] lg:min-h-[600px]">
           {view === "cinema" && can3d ? (
             <>
               <Scene3D
@@ -288,12 +288,12 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
             </div>
           )}
         </div>
-        <div className="lg:relative lg:min-h-[560px]">
+        <div className="lg:relative lg:min-h-[600px]">
           <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
             {minds && (
               // Fixed height, not a cap: a content-sized card resizes on every step
               // and drags the feed (and, on phones, the controls) up and down with it.
-              <div ref={inspectorRef} className="shrink-0 h-[400px] lg:h-[68%] flex scroll-mt-20">
+              <div ref={inspectorRef} className="shrink-0 h-[400px] lg:h-[76%] flex scroll-mt-20">
                 <MindInspector
                   model={model}
                   players={transcript.players}
@@ -363,9 +363,9 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
           onClick={() => setGodView((g) => !g)}
           disabled={minds}
           aria-pressed={spoil}
-          title={minds ? "Minds reveals all roles" : "Reveal all roles"}
+          title={minds ? "Minds reveals all roles" : spoil ? "Hide roles" : "Reveal all roles"}
         >
-          {spoil ? "👁 Roles shown" : "🙈 Hide roles"}
+          {spoil ? "👁 Roles shown" : "🙈 Roles hidden"}
         </button>
         <button
           ref={mindsBtnRef}
