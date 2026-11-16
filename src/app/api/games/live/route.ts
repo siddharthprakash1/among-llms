@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { createLiveGame, CreateGameInput } from "@/lib/games";
+import { buildConfig, createLiveGame, CreateGameInput } from "@/lib/games";
+import { checkStart, denied, inflightGames, readJsonBody, startFailed } from "@/lib/guard";
 import { listRunning } from "@/lib/live";
+import { runningTournaments } from "@/lib/tournaments/run";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,14 +10,22 @@ export const dynamic = "force-dynamic";
 // Start a live game — returns immediately with the id; simulation runs in the
 // background and streams over /api/games/[id]/stream.
 export async function POST(req: Request) {
-  let body: unknown = {};
+  const parsed = await readJsonBody(req);
+  if ("denial" in parsed) return denied(parsed.denial);
+  const input = parsed.body as CreateGameInput;
   try {
-    body = await req.json();
-  } catch {
-    body = {};
+    const d = checkStart(
+      req,
+      { kind: "game", seatModels: buildConfig(input).seatModels },
+      { games: listRunning().length + inflightGames(), tournaments: runningTournaments() }
+    );
+    if (d) return denied(d);
+    // No trackGame: the live registry already counts this game.
+    const { id } = createLiveGame(input);
+    return NextResponse.json({ id, live: true }, { status: 202 });
+  } catch (err) {
+    return startFailed(err, "Failed to create game");
   }
-  const { id } = createLiveGame((body ?? {}) as CreateGameInput);
-  return NextResponse.json({ id, live: true }, { status: 202 });
 }
 
 // List currently-running live games (for the home page's live rail).

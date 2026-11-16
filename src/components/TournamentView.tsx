@@ -49,6 +49,7 @@ export default function TournamentView({ id }: { id: string }) {
             </span>
           )}
           {t.status === "finished" && <span className="chip tag-good">✓ finished</span>}
+          {t.status === "abandoned" && <span className="chip">✕ interrupted</span>}
         </h1>
         <div className="flex flex-wrap gap-1.5 mt-2">
           <span className="chip tag-gold">
@@ -140,7 +141,7 @@ function Bracket({ t }: { t: Tournament }) {
                         </Link>
                       ) : (
                         <span key={g.key} className="chip !text-[10px] opacity-50">
-                          {g.status}
+                          {t.status === "abandoned" ? "not played" : g.status}
                         </span>
                       )
                     )}

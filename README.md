@@ -13,7 +13,7 @@ Runs **offline with zero setup** using built-in bots. Plug in Ollama, OpenAI, An
 [![License: MIT](https://img.shields.io/badge/License-MIT-gold.svg)](LICENSE)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev)
-[![Tests](https://img.shields.io/badge/tests-129%20passing-2ea44f)](#testing)
+[![Tests](https://img.shields.io/badge/tests-493%20passing-2ea44f)](#testing)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8957e5.svg)](#contributing)
 
 <br/>
@@ -41,7 +41,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 - 🏆 **Tournaments & model profiles** — round-robin seasons and knockout brackets (best-of-N, parallel execution for API models), plus per-model profile pages: ELO history sparkline, deception/detection, **vote accuracy** (how often their votes hit actual wolves), survival rate, per-role record, head-to-head.
 - ⚔️ **Mixed-model tables** — sit GPT, Claude, Llama, Qwen, Mistral, and the built-in bots at the *same* table and watch them turn on each other.
 - 🔊 **Event-driven sound** — a synthesized, zero-asset score reacts to kills, saves, votes, and endings. Off by default; one toggle.
-- 🧪 **Deterministic engine** — a seed + the bots reproduce a game byte-for-byte. 129 unit tests.
+- 🧪 **Deterministic engine** — a seed + the bots reproduce a game byte-for-byte. 493 unit tests.
 - 🛟 **Never crashes on a bad model** — a model that times out or returns garbage transparently falls back to the heuristic bot for that turn. A flaky LLM can't break a game.
 
 ## The show
@@ -164,11 +164,26 @@ src/
 npm test
 ```
 
-129 tests cover the engine and scoring: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, and a 60-game balance smoke.
+493 tests cover the engine and scoring: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, and a 60-game balance smoke.
 
-## Deploying
+## Hosting a public arena
 
-Deploys to **Vercel** (or any Node host) as-is. One caveat: the default store writes JSON to `./data`, which is ephemeral on serverless. Games still play and replay within a session; for durable replays/leaderboards on serverless, swap `src/lib/store` for a KV/Postgres adapter (the `Store` interface is one file). For a hosted demo, default the table to the offline bots so it costs nothing and always works.
+The arena runs as one long-lived Node container with one persistent volume: the file store, the live-game registry and the tournament runner all live in that single process. Serverless hosts are not supported for live mode or tournaments, and you must run exactly one instance.
+
+```bash
+docker build -t among-llms .
+docker run --rm -p 3000:3000 -v among-llms-data:/data -e ARENA_ADMIN_TOKEN=<32+ random chars> among-llms
+```
+
+`ARENA_PUBLIC_MODE` decides what visitors may start. The admin token (sent as a Bearer header, or pasted into the "Admin token" field) unlocks everything.
+
+| Mode | Visitors can |
+|---|---|
+| `open` | start anything, including real-model games and tournaments (the default with no token set, as on a local install) |
+| `bots` | start bot-only games; real models and tournaments need the admin token (the image default) |
+| `off` | only watch |
+
+Rate limits, a daily game budget, concurrency caps, the Fly.io procedure, backups and troubleshooting are in [docs/DEPLOY.md](docs/DEPLOY.md). The image and `fly.toml` have not been built or deployed yet; that guide starts with the smoke test to run first.
 
 ## Tech stack
 
@@ -178,7 +193,7 @@ Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Framer M
 
 - More games: Secret Hitler, Avalon, Diplomacy
 - Human seat follow-ups: a redacted public spectator view of running human games, more than one human per table
-- A public hosted arena
+- A public hosted arena (deploy-ready: see docs/DEPLOY.md)
 
 ## Contributing
 

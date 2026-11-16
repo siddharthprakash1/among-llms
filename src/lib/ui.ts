@@ -52,3 +52,24 @@ export function relativeTime(iso: string): string {
 export function roleNoun(role: Role): string {
   return `${role === "werewolf" || role === "villager" ? "a" : "the"} ${ROLE_META[role].label}`;
 }
+
+export const ADMIN_TOKEN_KEY = "arena-admin-token";
+
+/** Bearer header if the operator saved a token in this browser; {} otherwise and during SSR. */
+export function adminHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const value = window.localStorage.getItem(ADMIN_TOKEN_KEY)?.trim();
+    return value ? { authorization: `Bearer ${value}` } : {};
+  } catch {
+    // Storage can be blocked (private mode, sandboxed frame).
+    return {};
+  }
+}
+
+/** Drops ids the caller may not seat; a table never ends up empty. Returns `selected` itself when nothing changes. */
+export function withoutLocked(selected: string[], locked: string[]): string[] {
+  if (!selected.some((id) => locked.includes(id))) return selected;
+  const next = selected.filter((id) => !locked.includes(id));
+  return next.length ? next : ["mock"];
+}

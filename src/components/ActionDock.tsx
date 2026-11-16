@@ -10,7 +10,7 @@ import type { PromptKind, SeatAnswer, SeatMeta, SeatPrompt } from "@/lib/human/t
 import { seerClaimText } from "@/lib/human/sanitize";
 import { textKeyAction } from "@/lib/human/clientState";
 import type { ReplaySeat, ReplayState } from "@/lib/replay";
-import { cn, roleNoun } from "@/lib/ui";
+import { adminHeaders, cn, roleNoun } from "@/lib/ui";
 
 interface Props {
   gameId: string;
@@ -167,7 +167,7 @@ function PromptForm({ gameId, prompt, deadline, seats, selectedId, onSelect, onS
     try {
       const res = await fetch(`/api/games/${gameId}/seat/act`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...adminHeaders() },
         body: JSON.stringify({ ...answer, promptId: prompt.id }),
       });
       if (res.ok) {

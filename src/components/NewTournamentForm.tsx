@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ModelInfo } from "@/lib/agents/registry";
-import { cn, modelLabel } from "@/lib/ui";
+import type { GuardInfo } from "@/lib/guard";
+import { adminHeaders, cn, modelLabel } from "@/lib/ui";
+import AdminTokenField from "./AdminTokenField";
 
 export default function NewTournamentForm() {
   const router = useRouter();
   const [models, setModels] = useState<ModelInfo[]>([]);
+  // null = unknown (fetch failed): treated as fully open, the server stays the authority
+  const [guard, setGuard] = useState<GuardInfo | null>(null);
   const [name, setName] = useState("");
   const [format, setFormat] = useState<"round_robin" | "knockout">("round_robin");
   const [roster, setRoster] = useState<string[]>(["mock", "hunter-bot", "sentinel-bot"]);
@@ -17,12 +21,21 @@ export default function NewTournamentForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/models")
-      .then((r) => r.json())
-      .then((d: { models: ModelInfo[] }) => setModels(d.models ?? []))
-      .catch(() => setModels([]));
+  const loadModels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/models", { headers: adminHeaders() });
+      const d = (await res.json()) as { models?: ModelInfo[]; guard?: GuardInfo };
+      setModels(d.models ?? []);
+      setGuard(d.guard ?? null);
+    } catch {
+      setModels([]);
+      setGuard(null);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
 
   const toggle = (id: string) =>
     setRoster((cur) => {
@@ -39,7 +52,7 @@ export default function NewTournamentForm() {
     try {
       const res = await fetch("/api/tournaments", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...adminHeaders() },
         body: JSON.stringify({
           name,
           format,
@@ -142,9 +155,21 @@ export default function NewTournamentForm() {
       </p>
 
       {error && <div className="text-sm text-[var(--blood)]">{error}</div>}
-      <button className="btn btn-primary w-full py-3" onClick={run} disabled={loading}>
-        {loading ? "Seeding the bracket…" : "🏆 Start tournament"}
-      </button>
+      {guard && !guard.canStartTournaments ? (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--muted)] text-center py-2">
+            Tournaments are run by the arena operator.
+          </p>
+          {guard.adminConfigured && <AdminTokenField onChange={loadModels} />}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <button className="btn btn-primary w-full py-3" onClick={run} disabled={loading}>
+            {loading ? "Seeding the bracket…" : "🏆 Start tournament"}
+          </button>
+          {guard?.authorized && <AdminTokenField onChange={loadModels} authorized />}
+        </div>
+      )}
     </div>
   );
 }

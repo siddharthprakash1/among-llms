@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+data
+docs
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.remember
+.playwright-mcp
+Dockerfile
+fly.toml

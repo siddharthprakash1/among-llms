@@ -8,7 +8,7 @@ import { simulate } from "../engine/werewolf";
 import { buildBrainFactory } from "../agents/brains";
 import { MAX_PLAYERS, MIN_PLAYERS } from "../engine/roles";
 import { applyGame } from "../elo";
-import { store } from "../store";
+import { store, Store } from "../store";
 import { HUMAN_MODEL_ID } from "../human/types";
 import { KnockoutMatch, Tournament, TournamentConfig, TournamentGameRef } from "./types";
 import {
@@ -21,6 +21,29 @@ import {
   mixSeed,
   nextPending,
 } from "./schedule";
+
+// Ids of tournaments this process is running. On globalThis for the same reason
+// as the live registry: each route bundle gets its own copy of this module.
+const tg = globalThis as unknown as { __amongLlmsTournaments?: Set<string> };
+const active: Set<string> = (tg.__amongLlmsTournaments ??= new Set());
+
+export function runningTournaments(): number {
+  return active.size;
+}
+
+/** Boot-time: tournaments left "running" by a dead process can never progress. */
+export async function abandonOrphanedTournaments(s: Store = store): Promise<string[]> {
+  const changed: string[] = [];
+  for (const summary of await s.listTournaments(200)) {
+    if (summary.status !== "running" || active.has(summary.id)) continue;
+    const t = await s.getTournament(summary.id);
+    if (!t || t.status !== "running") continue;
+    t.status = "abandoned";
+    await s.saveTournament(t);
+    changed.push(t.id);
+  }
+  return changed;
+}
 
 const TOGGLEABLE: ToggleableRole[] = ["hunter", "witch", "jester"];
 
@@ -88,25 +111,48 @@ function materializeBracketGames(bracket: KnockoutMatch[][], config: TournamentC
 export async function createTournament(input: CreateTournamentInput): Promise<{ id: string }> {
   const config = buildTournamentConfig(input);
   const id = randomUUID().replace(/-/g, "").slice(0, 12);
-  const createdAt = new Date().toISOString();
+  // Reserved before the first await: two concurrent POSTs cannot both pass the
+  // tournament cap, and the boot reconcile never sees this id as orphaned.
+  active.add(id);
+  try {
+    const createdAt = new Date().toISOString();
 
-  const board = await store.getLeaderboard();
-  const eloOf = (m: string) => board[m]?.elo ?? 1000;
+    const board = await store.getLeaderboard();
+    const eloOf = (m: string) => board[m]?.elo ?? 1000;
 
-  const tournament: Tournament =
-    config.format === "round_robin"
-      ? { id, createdAt, status: "running", config, rounds: buildRoundRobin(config) }
-      : {
-          id,
-          createdAt,
-          status: "running",
-          config,
-          bracket: materializeBracketGames(buildKnockout(config, eloOf), config),
-        };
+    const tournament: Tournament =
+      config.format === "round_robin"
+        ? { id, createdAt, status: "running", config, rounds: buildRoundRobin(config) }
+        : {
+            id,
+            createdAt,
+            status: "running",
+            config,
+            bracket: materializeBracketGames(buildKnockout(config, eloOf), config),
+          };
 
-  await store.saveTournament(tournament);
-  void runTournament(id).catch(() => {});
+    await store.saveTournament(tournament);
+  } catch (err) {
+    active.delete(id);
+    throw err;
+  }
+  void runTournament(id)
+    // Nothing drives it after a throw, so "running" would be a lie the UI polls forever.
+    .catch(() => markAbandoned(id))
+    .finally(() => active.delete(id));
   return { id };
+}
+
+/** Best-effort: the store may be what failed. */
+async function markAbandoned(id: string): Promise<void> {
+  try {
+    const t = await store.getTournament(id);
+    if (!t || t.status !== "running") return;
+    t.status = "abandoned";
+    await store.saveTournament(t);
+  } catch {
+    /* the boot reconcile picks it up */
+  }
 }
 
 async function runGame(config: TournamentConfig, ref: TournamentGameRef, roster: string[]): Promise<void> {

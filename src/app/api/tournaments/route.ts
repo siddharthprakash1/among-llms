@@ -1,23 +1,28 @@
 import { NextResponse } from "next/server";
-import { createTournament, CreateTournamentInput } from "@/lib/tournaments/run";
+import { createTournament, CreateTournamentInput, runningTournaments } from "@/lib/tournaments/run";
+import { checkStart, denied, inflightGames, readJsonBody, startFailed } from "@/lib/guard";
+import { listRunning } from "@/lib/live";
 import { store } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  let body: unknown = {};
+  const parsed = await readJsonBody(req);
+  if ("denial" in parsed) return denied(parsed.denial);
   try {
-    body = await req.json();
-  } catch {
-    body = {};
-  }
-  try {
-    const { id } = await createTournament((body ?? {}) as CreateTournamentInput);
+    const d = checkStart(
+      req,
+      { kind: "tournament" },
+      { games: listRunning().length + inflightGames(), tournaments: runningTournaments() }
+    );
+    if (d) return denied(d);
+    // No await between the check and createTournament's synchronous slot
+    // reservation, so the tournament cap holds under concurrent requests.
+    const { id } = await createTournament(parsed.body as CreateTournamentInput);
     return NextResponse.json({ id }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to create tournament";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return startFailed(err, "Failed to create tournament");
   }
 }
 

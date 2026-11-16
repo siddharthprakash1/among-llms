@@ -31,12 +31,13 @@ async function frames(id: string, headers: Record<string, string> = {}): Promise
     .filter(Boolean)
     .map((f) => {
       if (f.startsWith("event: meta")) return "meta";
+      if (f.startsWith("event: end")) return `end ${JSON.parse(f.split("data: ")[1]).reason}`;
       if (f.startsWith("event: decision")) return `decision ${JSON.parse(f.split("data: ")[1]).seq}`;
       return `event ${f.match(/^id: (\d+)/)![1]}`;
     });
 }
 
-const ALL = ["meta", "decision 0", "event 0", "decision 1", "decision 2"];
+const ALL = ["meta", "decision 0", "event 0", "decision 1", "decision 2", "end abandoned"];
 
 describe("GET /api/games/[id]/stream", () => {
   it("flushes decisions left behind by an abandoned game before closing", async () => {
@@ -47,7 +48,7 @@ describe("GET /api/games/[id]/stream", () => {
   it("closes, with only the undelivered decisions, for a client that already has every event", async () => {
     abandoned("route-test-c");
     expect(await frames("route-test-c", { "last-event-id": "0" })).toEqual([
-      "meta", "decision 1", "decision 2",
+      "meta", "decision 1", "decision 2", "end abandoned",
     ]);
   });
 

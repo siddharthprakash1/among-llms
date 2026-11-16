@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createGame, recentGames, CreateGameInput } from "@/lib/games";
+import { buildConfig, createGame, recentGames, CreateGameInput } from "@/lib/games";
+import { checkStart, denied, inflightGames, readJsonBody, startFailed, trackGame } from "@/lib/guard";
+import { listRunning } from "@/lib/live";
+import { runningTournaments } from "@/lib/tournaments/run";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,18 +15,20 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  let body: unknown = {};
+  const parsed = await readJsonBody(req);
+  if ("denial" in parsed) return denied(parsed.denial);
+  const input = parsed.body as CreateGameInput;
   try {
-    body = await req.json();
-  } catch {
-    body = {};
-  }
-  const input = (body ?? {}) as CreateGameInput;
-  try {
-    const transcript = await createGame(input);
+    // Classified on the normalized config: exactly the seats the brain factory will see.
+    const d = checkStart(
+      req,
+      { kind: "game", seatModels: buildConfig(input).seatModels },
+      { games: listRunning().length + inflightGames(), tournaments: runningTournaments() }
+    );
+    if (d) return denied(d);
+    const transcript = await trackGame(createGame(input));
     return NextResponse.json({ id: transcript.id, transcript }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to create game";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return startFailed(err, "Failed to create game");
   }
 }

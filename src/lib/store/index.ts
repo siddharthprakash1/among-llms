@@ -37,28 +37,7 @@ export interface Store {
   listTournaments(limit?: number): Promise<TournamentSummary[]>;
 }
 
-export function summarizeTournament(t: Tournament): TournamentSummary {
-  return {
-    id: t.id,
-    createdAt: t.createdAt,
-    name: t.config.name,
-    format: t.config.format,
-    status: t.status,
-    roster: t.config.roster,
-  };
-}
-
-export function summarize(t: Transcript): GameSummary {
-  return {
-    id: t.id,
-    createdAt: t.createdAt,
-    numPlayers: t.config.numPlayers,
-    models: Array.from(new Set(t.players.map((p) => p.model))),
-    winner: t.result.winner,
-    days: t.result.days,
-    seed: t.config.seed,
-  };
-}
+export { summarize, summarizeTournament } from "./summary";
 
 import { fileStore } from "./fileStore";
 

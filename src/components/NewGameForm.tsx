@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ModelInfo } from "@/lib/agents/registry";
 import { defaultRoleCounts } from "@/lib/engine/roles";
 import type { Role, ToggleableRole } from "@/lib/engine/types";
-import { ROLE_META, cn, modelLabel } from "@/lib/ui";
+import type { GuardInfo } from "@/lib/guard";
+import { ROLE_META, adminHeaders, cn, modelLabel, withoutLocked } from "@/lib/ui";
+import AdminTokenField from "./AdminTokenField";
 
 const SIZES = [5, 6, 7, 8, 9, 10, 11, 12];
 const SEAT_ROLES: Role[] = ["werewolf", "seer", "doctor", "hunter", "witch", "jester", "villager"];
@@ -19,6 +21,8 @@ const SPECIAL_ROLES = [
 export default function NewGameForm() {
   const router = useRouter();
   const [models, setModels] = useState<ModelInfo[]>([]);
+  // null = unknown (fetch failed): treated as fully open, the server stays the authority
+  const [guard, setGuard] = useState<GuardInfo | null>(null);
   const [selected, setSelected] = useState<string[]>(["mock"]);
   const [numPlayers, setNumPlayers] = useState(7);
   const [specials, setSpecials] = useState<Record<string, boolean>>({
@@ -45,14 +49,28 @@ export default function NewGameForm() {
     if (seatRole && !dealtRoles.includes(seatRole)) setSeatRole(null);
   }, [seatRole, dealtRoles]);
 
-  useEffect(() => {
-    fetch("/api/models")
-      .then((r) => r.json())
-      .then((d: { models: ModelInfo[] }) => setModels(d.models ?? []))
-      .catch(() => setModels([{ id: "mock", label: "Mock bot (offline)", provider: "Mock", available: true }]));
+  const loadModels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/models", { headers: adminHeaders() });
+      const d = (await res.json()) as { models?: ModelInfo[]; guard?: GuardInfo };
+      setModels(d.models ?? []);
+      setGuard(d.guard ?? null);
+      const lockedNow = d.guard?.lockedModels ?? [];
+      setSelected((cur) => withoutLocked(cur, lockedNow));
+    } catch {
+      setModels([{ id: "mock", label: "Mock bot (offline)", provider: "Mock", available: true }]);
+      setGuard(null);
+    }
   }, []);
 
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
+
+  const locked = guard?.lockedModels ?? [];
+
   const toggle = (id: string) => {
+    if (locked.includes(id)) return;
     setSelected((cur) => {
       if (cur.includes(id)) {
         const next = cur.filter((m) => m !== id);
@@ -73,7 +91,7 @@ export default function NewGameForm() {
     try {
       const res = await fetch(live ? "/api/games/live" : "/api/games", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...adminHeaders() },
         body: JSON.stringify({ numPlayers, seatModels: selected, disabledRoles }),
       });
       const data = await res.json();
@@ -92,7 +110,7 @@ export default function NewGameForm() {
     try {
       const res = await fetch("/api/games/human", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...adminHeaders() },
         body: JSON.stringify({
           numPlayers,
           seatModels: selected,
@@ -110,6 +128,10 @@ export default function NewGameForm() {
   };
 
   const onlyMock = models.length <= 1;
+  const hosted = guard !== null && guard.mode !== "open";
+  const viewOnly = guard !== null && !guard.canStartGames;
+  // A blocking POST sends no bytes until the game ends; hosting proxies cut it at about 60 s.
+  const blockingTooSlow = hosted && selected.some((id) => guard.realModels.includes(id));
   const chip = (on: boolean) =>
     cn(
       "px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
@@ -150,23 +172,43 @@ export default function NewGameForm() {
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {models.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => toggle(m.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
-                selected.includes(m.id)
-                  ? "bg-[var(--panel-2)] border-[var(--gold)] text-[var(--gold)]"
-                  : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
-              )}
-            >
-              {modelLabel(m.id)}
-              <span className="ml-1.5 text-[10px] opacity-70">{m.provider}</span>
-            </button>
-          ))}
+          {models.map((m) => {
+            const isLocked = locked.includes(m.id);
+            return (
+              <button
+                key={m.id}
+                onClick={() => toggle(m.id)}
+                aria-disabled={isLocked || undefined}
+                aria-describedby={isLocked ? "locked-models-help" : undefined}
+                title={isLocked ? "Operator only — real models cost the host money" : undefined}
+                className={cn(
+                  "px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+                  isLocked
+                    ? "border-[var(--border)] text-[var(--muted)] opacity-50 cursor-not-allowed"
+                    : selected.includes(m.id)
+                    ? "bg-[var(--panel-2)] border-[var(--gold)] text-[var(--gold)]"
+                    : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+                )}
+              >
+                {isLocked && <span aria-hidden>🔒 </span>}
+                {modelLabel(m.id)}
+                <span className="ml-1.5 text-[10px] opacity-70">{m.provider}</span>
+              </button>
+            );
+          })}
         </div>
-        {onlyMock && (
+        {locked.length > 0 && (
+          <p id="locked-models-help" className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
+            <span aria-hidden>🔒 </span>Real models are operator-only on this arena — they cost the
+            host money.{!viewOnly && " Bot games are open to everyone."}
+          </p>
+        )}
+        {guard?.adminConfigured && (
+          <div className="mt-3">
+            <AdminTokenField onChange={loadModels} authorized={guard.authorized} />
+          </div>
+        )}
+        {onlyMock && !hosted && (
           <p className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
             Only the offline bot is configured. Add an API key or Ollama in{" "}
             <code className="text-[var(--gold)]">.env</code> to seat real models like GPT, Claude,
@@ -202,16 +244,36 @@ export default function NewGameForm() {
 
       {error && <div className="text-sm text-[var(--blood)]">{error}</div>}
 
-      <div className="grid grid-cols-2 gap-2">
-        <button className="btn btn-primary py-3 text-base" onClick={() => run(false)} disabled={loading}>
-          {pending === "run" ? "Dealing…" : "▶ Run a match"}
-        </button>
-        <button className="btn btn-ghost py-3 text-base" onClick={() => run(true)} disabled={loading}>
-          {pending === "live" ? "Dealing…" : "📡 Watch live"}
-        </button>
-      </div>
+      {viewOnly ? (
+        <p className="text-sm text-[var(--muted)] text-center py-2">
+          This arena is view-only. Watch the latest games below.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className="btn btn-primary py-3 text-base"
+              onClick={() => run(false)}
+              disabled={loading || blockingTooSlow}
+              aria-describedby={blockingTooSlow ? "run-match-help" : undefined}
+              title={blockingTooSlow ? "Real-model games take minutes — use Watch live" : undefined}
+            >
+              {pending === "run" ? "Dealing…" : "▶ Run a match"}
+            </button>
+            <button className="btn btn-ghost py-3 text-base" onClick={() => run(true)} disabled={loading}>
+              {pending === "live" ? "Dealing…" : "📡 Watch live"}
+            </button>
+          </div>
+          {blockingTooSlow && (
+            <p id="run-match-help" className="text-xs text-[var(--muted)] text-center leading-relaxed">
+              Real-model games take minutes — start them with{" "}
+              <span className="text-[var(--text)]">Watch live</span>.
+            </p>
+          )}
+        </div>
+      )}
 
-      <div>
+      <div className={cn(viewOnly && "hidden")}>
         <button
           className="btn btn-ghost w-full py-3 text-base !border-[color-mix(in_srgb,var(--gold)_55%,transparent)]"
           onClick={() => setSeatOpen((o) => !o)}

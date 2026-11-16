@@ -1,3 +1,4 @@
+import { checkAct, denied, readJsonBody } from "@/lib/guard";
 import { MAX_ACT_BODY_BYTES, resumeSeat, submitAnswer, verifySeat } from "@/lib/human/seat";
 
 export const runtime = "nodejs";
@@ -18,23 +19,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
     return Response.json({ error: "Expected application/json" }, { status: 415 });
   }
-  // Refused on the declared length first, so an oversize body is never buffered.
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_ACT_BODY_BYTES) {
-    return Response.json({ error: "Body too large" }, { status: 413 });
+  // Only after the seat check, so the guard can add a refusal but never stand
+  // in for the token. Flood limit only: this game was admitted when it started.
+  const flood = checkAct(req);
+  if (flood) return denied(flood);
+  // Refused on the declared length first, and never buffered past the cap.
+  const parsed = await readJsonBody(req, MAX_ACT_BODY_BYTES);
+  if ("denial" in parsed) return denied(parsed.denial, "Body too large");
+  if (parsed.malformed) {
+    return Response.json(
+      { error: parsed.reason === "json" ? "Malformed JSON" : "Body must be a JSON object" },
+      { status: 400 }
+    );
   }
-  const raw = await req.text();
-  if (Buffer.byteLength(raw, "utf8") > MAX_ACT_BODY_BYTES) {
-    return Response.json({ error: "Body too large" }, { status: 413 });
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return Response.json({ error: "Malformed JSON" }, { status: 400 });
-  }
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return Response.json({ error: "Body must be a JSON object" }, { status: 400 });
-  }
+  const body = parsed.body;
   if ((body as { resume?: unknown }).resume === true) {
     resumeSeat(id);
     return Response.json({ ok: true });

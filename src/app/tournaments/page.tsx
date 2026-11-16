@@ -50,7 +50,7 @@ export default async function TournamentsPage() {
                       t.status === "finished" && "tag-good"
                     )}
                   >
-                    {t.status}
+                    {t.status === "abandoned" ? "interrupted" : t.status}
                   </span>
                 </Link>
               ))}

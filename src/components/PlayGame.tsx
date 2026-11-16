@@ -12,7 +12,7 @@ import { seatKnowledge, seatTranscript } from "@/lib/human/clientState";
 import type { SeatEvent, SeatMeta, SeatStatus } from "@/lib/human/types";
 import { deriveState } from "@/lib/replay";
 import { playCue } from "@/lib/sound";
-import { roleNoun } from "@/lib/ui";
+import { adminHeaders, roleNoun } from "@/lib/ui";
 import ActionDock from "./ActionDock";
 import EventFeed from "./EventFeed";
 import GameTable from "./GameTable";
@@ -34,6 +34,7 @@ export default function PlayGame({ id }: { id: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const seenCue = useRef(-1);
   const cuedPrompt = useRef<string | null>(null);
@@ -252,14 +253,20 @@ export default function PlayGame({ id }: { id: string }) {
 
   const resume = async () => {
     setResuming(true);
+    setResumeError(null);
     try {
-      await fetch(`/api/games/${id}/seat/act`, {
+      const res = await fetch(`/api/games/${id}/seat/act`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...adminHeaders() },
         body: JSON.stringify({ resume: true }),
       });
+      if (!res.ok) {
+        // The banner stays up, so say why (the flood limit answers 429 here).
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setResumeError(data?.error ?? "Couldn't take back control. Try again.");
+      }
     } catch {
-      /* the banner stays; the player can press again */
+      setResumeError("Couldn't reach the table. Try again.");
     }
     setResuming(false);
   };
@@ -356,6 +363,11 @@ export default function PlayGame({ id }: { id: string }) {
           <div className="text-sm">
             <span className="text-[var(--gold)] font-semibold">🤖 Autopilot is playing for you.</span>{" "}
             <span className="text-[var(--muted)]">You missed two turns in a row.</span>
+            {resumeError && (
+              <div role="alert" className="text-[var(--blood)] mt-1">
+                {resumeError}
+              </div>
+            )}
           </div>
           <button className="btn btn-primary py-2" onClick={resume} disabled={resuming}>
             Take back control

@@ -35,6 +35,12 @@ export default function LiveGame({ id }: { id: string }) {
   // null = the inspector follows the live edge
   const [pinnedSeq, setPinnedSeq] = useState<number | null>(null);
   const [notFound, setNotFound] = useState(false);
+  // "error": the game stopped in a server that is still up. "restart": the
+  // server no longer knows a game this viewer had already been shown.
+  const [interrupted, setInterrupted] = useState<"error" | "restart" | null>(null);
+  // The id whose meta this viewer has seen. Outlives the stream re-opens the
+  // sealed card triggers, so a restart is not mistaken for a wrong link.
+  const sawMetaFor = useRef<string | null>(null);
   const [sealed, setSealed] = useState(false);
   // Bumped to re-open the stream while the sealed card is up.
   const [retry, setRetry] = useState(0);
@@ -58,6 +64,7 @@ export default function LiveGame({ id }: { id: string }) {
     }, 5000);
     es.addEventListener("meta", (e) => {
       gotMeta = true;
+      sawMetaFor.current = id;
       try {
         const m = JSON.parse((e as MessageEvent).data) as Meta;
         if (m.sealed) {
@@ -81,6 +88,22 @@ export default function LiveGame({ id }: { id: string }) {
       } catch {
         /* ignore */
       }
+    });
+    // Terminal frame: without it the browser would reconnect forever to a game
+    // that no longer exists after a server restart.
+    es.addEventListener("end", (e) => {
+      clearTimeout(timeout);
+      es.close();
+      let reason = "";
+      try {
+        reason = (JSON.parse((e as MessageEvent).data) as { reason?: string }).reason ?? "";
+      } catch {
+        /* treated as interrupted */
+      }
+      setSealed(false);
+      if (reason !== "not_found") setInterrupted("error");
+      else if (sawMetaFor.current === id) setInterrupted("restart");
+      else setNotFound(true);
     });
     es.onmessage = (e) => {
       try {
@@ -231,6 +254,22 @@ export default function LiveGame({ id }: { id: string }) {
         <div className="display text-2xl">Game not found</div>
         <div className="text-sm text-[var(--muted)]">
           This match doesn&apos;t exist or has already scrolled out of the live buffer.
+        </div>
+        <Link href="/" className="btn btn-primary">
+          Back to the arena
+        </Link>
+      </div>
+    );
+  }
+
+  if (interrupted) {
+    return (
+      <div className="glass p-12 text-center space-y-3">
+        <div className="display text-2xl">Match interrupted</div>
+        <div className="text-sm text-[var(--muted)]">
+          {interrupted === "restart"
+            ? "The server restarted mid-game, so this match wasn't finished or rated."
+            : "This match hit an error and stopped, so it wasn't finished or rated."}
         </div>
         <Link href="/" className="btn btn-primary">
           Back to the arena
