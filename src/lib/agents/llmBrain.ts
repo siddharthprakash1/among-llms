@@ -39,6 +39,7 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_TOKENS = 512;
 // Public speech is only ever read from a named JSON key, never from raw text.
 const STRICT = { allowRaw: false } as const;
+const MAX_ATTEMPTS = 2;
 
 export class LlmBrain implements Brain {
   readonly id: string;
@@ -124,13 +125,19 @@ export class LlmBrain implements Brain {
     const started = Date.now();
     let reason: FallbackReason;
     try {
-      const text = await this.chat(SYSTEM_PROMPT, prompt());
-      const value = parse(text);
-      if (value !== null) {
-        out.source = "model";
-        out.reasoning = parseReasoning(text);
-        out.latencyMs = Date.now() - started;
-        return value;
+      const user = prompt();
+      let text = "";
+      // One retry on an unusable reply: sampling is hot (0.85), so a second
+      // draw usually lands. Network/HTTP errors are not retried.
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        text = await this.chat(SYSTEM_PROMPT, user);
+        const value = parse(text);
+        if (value !== null) {
+          out.source = "model";
+          out.reasoning = parseReasoning(text);
+          out.latencyMs = Date.now() - started;
+          return value;
+        }
       }
       reason = extractJson(text) === null ? "parse" : "invalid";
     } catch (err) {

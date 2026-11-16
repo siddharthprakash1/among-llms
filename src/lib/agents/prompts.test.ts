@@ -159,8 +159,10 @@ describe("prompt builders ask for private reasoning", () => {
       hunterPrompt(view),
     ];
     for (const p of prompts) {
-      const format = p.split("\n").at(-1)!;
-      expect(format.startsWith('Respond as JSON: {"reasoning"')).toBe(true);
+      const lines = p.split("\n");
+      expect(lines.at(-2)!.startsWith('Respond as JSON: {"reasoning"')).toBe(true);
+      // Small local models answer {} unless the prompt ends on a cue.
+      expect(lines.at(-1)).toBe("Your JSON answer:");
     }
     expect(SYSTEM_PROMPT).toContain('"reasoning"');
   });
