@@ -73,3 +73,24 @@ export function withoutLocked(selected: string[], locked: string[]): string[] {
   const next = selected.filter((id) => !locked.includes(id));
   return next.length ? next : ["mock"];
 }
+
+/** The count with its noun: "1 statement", "0 statements"; irregular nouns pass `pluralForm` ("2 wolves"). */
+export function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
+/**
+ * Brings a feed's newest line into view (`endClearance` as on EventFeed). scrollIntoView
+ * also scrolls the page, so a caller that passes 0 gets only the list scrolled.
+ */
+export function followFeedEnd(
+  list: { scrollHeight: number; scrollTo(options: ScrollToOptions): void } | null,
+  end: { scrollIntoView(options: ScrollIntoViewOptions): void } | null,
+  endClearance: number | undefined
+): void {
+  if (endClearance === 0 && list) {
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    return;
+  }
+  end?.scrollIntoView({ behavior: "smooth", block: "end" });
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { loadSoundPref, playCue, setSoundEnabled } from "@/lib/sound";
 
-export default function SoundToggle() {
+export default function SoundToggle({ className = "btn btn-ghost py-1.5 px-3 text-sm" }: { className?: string }) {
   const [on, setOn] = useState(false);
 
   useEffect(() => {
@@ -21,8 +21,9 @@ export default function SoundToggle() {
     <button
       onClick={toggle}
       title={on ? "Sound on" : "Sound off"}
+      aria-label="Sound"
       aria-pressed={on}
-      className="btn btn-ghost py-1.5 px-3 text-sm"
+      className={className}
     >
       {on ? "🔊" : "🔇"}
     </button>

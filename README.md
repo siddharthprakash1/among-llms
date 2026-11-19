@@ -13,7 +13,7 @@ Runs **offline with zero setup** using built-in bots. Plug in Ollama, OpenAI, An
 [![License: MIT](https://img.shields.io/badge/License-MIT-gold.svg)](LICENSE)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev)
-[![Tests](https://img.shields.io/badge/tests-493%20passing-2ea44f)](#testing)
+[![Tests](https://img.shields.io/badge/tests-541%20passing-2ea44f)](#testing)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8957e5.svg)](#contributing)
 
 <br/>
@@ -36,7 +36,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 
 ## Features
 
-- 🎬 **Cinematic 3D stage with an auto-director** — a moonlit village table rendered in three.js, with a camera that idles in slow orbit, pushes in on whoever is speaking, and drops low and close for every night kill and lynching. Falls back to a polished 2D "Classic view" automatically when WebGL is unavailable or reduced-motion is set.
+- 🎬 **Cinematic 3D stage with an auto-director** — a moonlit village table rendered in three.js, with a camera that idles in slow orbit, pushes in on whoever is speaking, drops low and close for every night kill and lynching, cranes high over the table while the ballots are cast and counted, and circles the table in a closing shot once the game ends, until you drag or zoom the stage yourself. Falls back to a polished 2D "Classic view" automatically when WebGL is unavailable or reduced-motion is set.
 - 🎭 **Seven roles, three-beat days** — Werewolf, Seer, Doctor, **Hunter** (dying breath takes someone with him), **Witch** (one heal, one poison), **Jester** (wins *alone* by getting himself lynched), Villager. Each day runs statements → **formal accusations** → **defenses** → vote, and the wolves coordinate in a private **pack chat** at night — visible in god view, where you watch the actual conspiracy.
 - 🧠 **Agents that remember** — every prompt carries a behavioral dossier ("voted twice against players revealed innocent", "accused by 3") so models can cite receipts, not vibes.
 - 🧠 **Reasoning inspector** — step through any game and read what each model was privately thinking, next to what it said out loud, with fallback and engine-override provenance.
@@ -45,7 +45,7 @@ Among LLMs turns that into both a **spectacle** (every game is a replayable, sha
 - 🏆 **Tournaments & model profiles** — round-robin seasons and knockout brackets (best-of-N, parallel execution for API models), plus per-model profile pages: ELO history sparkline, deception/detection, **vote accuracy** (how often their votes hit actual wolves), survival rate, per-role record, head-to-head.
 - ⚔️ **Mixed-model tables** — sit GPT, Claude, Llama, Qwen, Mistral, and the built-in bots at the *same* table and watch them turn on each other.
 - 🔊 **Event-driven sound** — a synthesized, zero-asset score reacts to kills, saves, votes, and endings. Off by default; one toggle.
-- 🧪 **Deterministic engine** — a seed + the bots reproduce a game byte-for-byte. 493 unit tests.
+- 🧪 **Deterministic engine** — a seed + the bots reproduce a game byte-for-byte. 541 unit tests.
 - 🛟 **Never crashes on a bad model** — a model that times out or returns garbage transparently falls back to the heuristic bot for that turn. A flaky LLM can't break a game.
 
 ## The show
@@ -174,7 +174,7 @@ src/
 npm test
 ```
 
-493 tests cover the engine, scoring, the human seat and the hosting guards: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, a 60-game balance smoke, human-seat redaction and action legality, turn timers and autopilot, the sealed spectator stream, public-mode/admin-token/rate-limit guards on every start route, and atomic file-store writes.
+541 tests cover the engine, scoring, the human seat and the hosting guards: seeded determinism, role tables, the Doctor's save vs. the Witch's heal, unblockable poison, the Hunter's revenge shot on every death cause, the Jester's lynch-to-win, three-beat day ordering, wolf-chat gating, prompt role-redaction (a villager's prompt never sees the pack chat), both win conditions, guaranteed termination, action legality, ELO math (jester exclusion + history), tournament scheduling/brackets/tiebreaks, profile stats, the replay reducer, the director's shot mapping, a 60-game balance smoke, human-seat redaction and action legality, turn timers and autopilot, the sealed spectator stream, public-mode/admin-token/rate-limit guards on every start route, and atomic file-store writes.
 
 ## Hosting a public arena
 

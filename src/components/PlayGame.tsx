@@ -4,7 +4,7 @@
 // stream, which carries only what this seat's role may know; the table and feed
 // are the same components the spectator views use.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -12,7 +12,7 @@ import { seatKnowledge, seatTranscript } from "@/lib/human/clientState";
 import type { SeatEvent, SeatMeta, SeatStatus } from "@/lib/human/types";
 import { deriveState } from "@/lib/replay";
 import { playCue } from "@/lib/sound";
-import { adminHeaders, roleNoun } from "@/lib/ui";
+import { adminHeaders, plural, roleNoun } from "@/lib/ui";
 import ActionDock from "./ActionDock";
 import EventFeed from "./EventFeed";
 import GameTable from "./GameTable";
@@ -23,6 +23,18 @@ type Gate = "ok" | "denied" | "lost";
 
 const MAX_PROBE_RETRIES = 5;
 const TOAST_MS = 4500;
+
+// Tailwind's lg breakpoint: from here up the dock sits in the page under the
+// table; below it, the dock is pinned over the bottom of the screen.
+const WIDE_QUERY = "(min-width: 64rem)";
+
+function subscribeWide(onChange: () => void) {
+  const mql = window.matchMedia(WIDE_QUERY);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+const isWide = () => window.matchMedia(WIDE_QUERY).matches;
+const isWideOnServer = () => false;
 
 export default function PlayGame({ id }: { id: string }) {
   const router = useRouter();
@@ -40,6 +52,8 @@ export default function PlayGame({ id }: { id: string }) {
   const cuedPrompt = useRef<string | null>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [dockHeight, setDockHeight] = useState(0);
+  const revealedPrompt = useRef<string | null>(null);
+  const wide = useSyncExternalStore(subscribeWide, isWide, isWideOnServer);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,8 +251,8 @@ export default function PlayGame({ id }: { id: string }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // The dock is pinned over the bottom of the page, so the feed has to know how
-  // much of the viewport it covers to keep its newest line readable.
+  // Below lg the dock is pinned over the bottom of the screen, so the feed has to
+  // know how much of the viewport it covers to keep its newest line readable.
   const dockReady = Boolean(meta && view);
   useEffect(() => {
     const el = dockRef.current;
@@ -247,6 +261,17 @@ export default function PlayGame({ id }: { id: string }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [dockReady]);
+
+  // From lg up the dock sits under the table, often below the fold, so each new
+  // prompt is scrolled into view once, when its form appears, and never for feed
+  // events. Below lg the pinned dock is always on screen.
+  const revealPrompt = useCallback((pid: string) => {
+    if (revealedPrompt.current === pid) return;
+    revealedPrompt.current = pid;
+    if (!isWide()) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    dockRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "nearest" });
+  }, []);
 
   const select = useCallback((sid: number | null) => setSelectedId(sid), []);
   const toggleSeat = useCallback((sid: number) => setSelectedId((cur) => (cur === sid ? null : sid)), []);
@@ -342,7 +367,7 @@ export default function PlayGame({ id }: { id: string }) {
               🎭 You are {you.avatar} {you.name}
             </span>
             {ghost && !done && <span className="chip tag-mind">👻 Ghost</span>}
-            <span className="chip">{meta.numPlayers} players</span>
+            <span className="chip">{plural(meta.numPlayers, "player")}</span>
             <span className="chip">unrated</span>
           </div>
         </div>
@@ -407,7 +432,9 @@ export default function PlayGame({ id }: { id: string }) {
             onSelect={toggleSeat}
           />
         </div>
-        <div className="lg:relative lg:min-h-[640px]">
+        {/* As tall as the table (520 + padding), no taller: the dock starts right under it, so
+            revealing a prompt scrolls little and the top seat stays clear of the header. */}
+        <div className="lg:relative lg:min-h-[570px]">
           <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
             <div className="shrink-0">
               <RoleCard meta={meta} knowledge={knowledge} seats={seats} />
@@ -417,14 +444,14 @@ export default function PlayGame({ id }: { id: string }) {
                 log={state.log}
                 seats={seats}
                 youId={you.seatId}
-                endClearance={dockHeight > 0 ? dockHeight + 24 : 0}
+                endClearance={!wide && dockHeight > 0 ? dockHeight + 24 : 0}
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div ref={dockRef} className="sticky bottom-3 z-20">
+      <div ref={dockRef} className="sticky bottom-3 z-20 lg:static scroll-mt-20 scroll-mb-3">
         <ActionDock
           gameId={id}
           prompt={prompt}
@@ -437,6 +464,7 @@ export default function PlayGame({ id }: { id: string }) {
           onSelect={select}
           lastBanner={state.banner}
           ghost={ghost}
+          onPromptShown={revealPrompt}
         />
       </div>
 

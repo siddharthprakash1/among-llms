@@ -3,7 +3,7 @@
 
 import { DecisionRecord, FallbackReason, GameEvent, Player, Transcript } from "./engine/types";
 import { HUMAN_MODEL_ID } from "./human/types";
-import { pct } from "./ui";
+import { pct, plural } from "./ui";
 
 export function hasDecisions(t: Pick<Transcript, "decisions">): boolean {
   return (t.decisions?.length ?? 0) > 0;
@@ -282,5 +282,5 @@ export function decisionShortcut(e: ShortcutKey): "prev" | "next" | null {
 
 /** "1 fallback", "2 fallbacks". */
 export function countLabel(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+  return plural(n, noun);
 }

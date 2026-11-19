@@ -6,13 +6,14 @@
 // driven by the pure `directShot` director (see lib/director.ts). Loaded via
 // next/dynamic (ssr:false) by the ReplayPlayer.
 
-import { useMemo, useRef } from "react";
+import { RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
+import { GameEvent } from "@/lib/engine/types";
 import { Highlight, ReplayPhase, ReplaySeat } from "@/lib/replay";
-import { directShot, ringPositions, Vec3 } from "@/lib/director";
+import { directShot, plateScale, plateSizeAt, ringPositions, Vec3 } from "@/lib/director";
 import { ROLE_META } from "@/lib/ui";
 
 interface Scene3DProps {
@@ -23,6 +24,8 @@ interface Scene3DProps {
   showRole: boolean;
   playing: boolean;
   thinkingId?: number;
+  /** Kind of the event on screen, for the director. */
+  event?: GameEvent["kind"];
 }
 
 const TEAM_COLOR: Record<"good" | "evil" | "neutral", string> = {
@@ -31,39 +34,74 @@ const TEAM_COLOR: Record<"good" | "evil" | "neutral", string> = {
   neutral: "#d9a3ff",
 };
 
+// What the free camera (OrbitControls) circles and looks at.
+const ORBIT_TARGET: Vec3 = [0, 0.6, 0];
+
+// Height of a dead seat's nameplate: low enough to read as fallen, high enough that the
+// kill close-up (aimed at 1.35 from 0.6) keeps the whole sideways plate in frame.
+const DEAD_PLATE_Y = 1.1;
+
 function CameraRig({
   seatPositions,
   phase,
   finished,
   highlight,
+  event,
   playing,
+  taken,
 }: {
   seatPositions: Vec3[];
   phase: ReplayPhase;
   finished: boolean;
   highlight: Highlight;
+  event?: GameEvent["kind"];
   playing: boolean;
+  /** Set once the viewer drags or zooms the stage at the end of the game. */
+  taken: RefObject<boolean>;
 }) {
   const { camera } = useThree();
-  const look = useRef(new THREE.Vector3(0, 0.6, 0));
+  const pos = useRef(new THREE.Vector3());
+  const look = useRef(new THREE.Vector3(...ORBIT_TARGET));
+  const filming = useRef(false);
 
+  // Priority -0.5: after OrbitControls (-1), before the nameplates (0), so each plate is
+  // placed with the camera this frame renders, not last frame's.
   useFrame((state, delta) => {
-    if (!playing) return; // OrbitControls owns the camera while paused
+    // Paused mid-game, OrbitControls owns the camera. At the end the director keeps
+    // filming the finale (playback has stopped) until the viewer grabs the stage.
+    if (!playing && (!finished || taken.current)) {
+      filming.current = false;
+      return;
+    }
+    if (!filming.current) {
+      // Take over from the free camera, which was looking at its orbit target, so the
+      // view eases from there instead of snapping to the last shot's target.
+      filming.current = true;
+      pos.current.copy(camera.position);
+      look.current.set(...ORBIT_TARGET);
+    }
+    const { width, height } = state.size;
     const shot = directShot({
       phase,
       finished,
       highlight,
       seatPositions,
       time: state.clock.elapsedTime,
+      event,
+      aspect: height > 0 ? width / height : undefined,
     });
     const k = 1 - Math.pow(0.001, delta); // frame-rate-independent smoothing
-    camera.position.lerp(new THREE.Vector3(...shot.position), k * 0.9);
+    // The rig keeps its own position: during the finale the controls are live and clamp
+    // the camera each frame (a low close-up sits below their polar limit), and that must
+    // not leak into the shot.
+    pos.current.lerp(new THREE.Vector3(...shot.position), k * 0.9);
+    camera.position.copy(pos.current);
     look.current.lerp(new THREE.Vector3(...shot.target), k);
     camera.lookAt(look.current);
     const cam = camera as THREE.PerspectiveCamera;
     cam.fov += (shot.fov - cam.fov) * k;
     cam.updateProjectionMatrix();
-  });
+  }, -0.5);
 
   return null;
 }
@@ -74,12 +112,15 @@ function Pawn({
   highlight,
   showRole,
   thinking,
+  plates,
 }: {
   seat: ReplaySeat;
   pos: Vec3;
   highlight: Highlight;
   showRole: boolean;
   thinking: boolean;
+  /** Nameplate size relative to the usual (the director's plateScale). */
+  plates: number;
 }) {
   const reveal = showRole || seat.revealed;
   const meta = ROLE_META[seat.role];
@@ -108,82 +149,116 @@ function Pawn({
   // dead pawns topple over
   const rotation: [number, number, number] = seat.alive ? [0, 0, 0] : [0, 0, Math.PI / 2.3];
   const y = seat.alive ? 0 : -0.15;
+  const plateY = seat.alive ? 1.75 : DEAD_PLATE_Y;
+
+  // The nameplate shrinks with distance as drei's distanceFactor would, but is resized only
+  // when its size crosses a 2% step (plateSizeAt): resized on every frame of a camera move,
+  // its emoji were redrawn every frame. Written to the DOM directly, as drei does, so a
+  // frame never re-renders React.
+  const sizer = useRef<HTMLDivElement>(null);
+  const drawn = useRef<{ el: HTMLDivElement | null; size: number }>({ el: null, size: 0 });
+  const anchor = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera }) => {
+    const el = sizer.current;
+    if (!el) return;
+    anchor.set(pos[0], plateY, pos[2]);
+    const size = plateSizeAt(camera.position.distanceTo(anchor), (camera as THREE.PerspectiveCamera).fov);
+    if (drawn.current.el === el && drawn.current.size === size) return;
+    drawn.current = { el, size };
+    el.style.transform = `scale(${size})`;
+  });
 
   return (
-    <group position={[pos[0], y, pos[2]]} rotation={rotation}>
-      {/* body */}
-      <mesh position={[0, 0.45, 0]} castShadow>
-        <cylinderGeometry args={[0.28, 0.34, 0.9, 12]} />
-        <meshStandardMaterial
-          color={bodyColor}
-          emissive={emissive}
-          emissiveIntensity={emissiveIntensity}
-          roughness={0.7}
-          transparent
-          opacity={seat.alive ? 1 : 0.8}
-        />
-      </mesh>
-      {/* head */}
-      <mesh position={[0, 1.05, 0]} castShadow>
-        <sphereGeometry args={[0.22, 16, 16]} />
-        <meshStandardMaterial
-          color={bodyColor}
-          emissive={emissive}
-          emissiveIntensity={emissiveIntensity * 0.6}
-          roughness={0.6}
-          transparent
-          opacity={seat.alive ? 1 : 0.8}
-        />
-      </mesh>
-      {/* floating nameplate / avatar */}
-      <Html position={[0, 1.75, 0]} center distanceFactor={6} occlude={false} pointerEvents="none">
-        {/* The badge sits outside the rotated nameplate so it stays upright on a dead seat. */}
-        <div style={{ textAlign: "center", position: "relative" }}>
-          {/* Out of flow, so the centred nameplate does not shift when the badge comes and goes. */}
-          {thinking && (
-            <div
-              style={{
-                position: "absolute",
-                // Beside the avatar, not above it: in a close-up the space above the
-                // nameplate belongs to the phase banner.
-                top: 2,
-                left: "calc(50% + 18px)",
-                width: 22,
-                height: 22,
-                display: "grid",
-                placeItems: "center",
-                fontSize: 13,
-                lineHeight: 1,
-                borderRadius: 999,
-                background: "#0a0a12",
-                border: "1px solid #b48cff",
-                boxShadow: "0 0 10px -2px #b48cff",
-              }}
-            >
-              💭
-            </div>
-          )}
+    <group position={[pos[0], 0, pos[2]]}>
+      <group position={[0, y, 0]} rotation={rotation}>
+        {/* body */}
+        <mesh position={[0, 0.45, 0]} castShadow>
+          <cylinderGeometry args={[0.28, 0.34, 0.9, 12]} />
+          <meshStandardMaterial
+            color={bodyColor}
+            emissive={emissive}
+            emissiveIntensity={emissiveIntensity}
+            roughness={0.7}
+            transparent
+            opacity={seat.alive ? 1 : 0.8}
+          />
+        </mesh>
+        {/* head */}
+        <mesh position={[0, 1.05, 0]} castShadow>
+          <sphereGeometry args={[0.22, 16, 16]} />
+          <meshStandardMaterial
+            color={bodyColor}
+            emissive={emissive}
+            emissiveIntensity={emissiveIntensity * 0.6}
+            roughness={0.6}
+            transparent
+            opacity={seat.alive ? 1 : 0.8}
+          />
+        </mesh>
+      </group>
+      {/* Floating nameplate / avatar. A dead seat's plate stays over the seat instead of
+          falling with the body (always toward -x, up to 1.7 units off), so the close-up
+          on a voted-out seat and the vote crane keep it in frame. */}
+      <Html position={[0, plateY, 0]} center occlude={false} pointerEvents="none">
+        <div ref={sizer}>
+          {/* The badge sits outside the rotated nameplate so it stays upright on a dead seat.
+              The vote's larger plates (plateScale) apply here, apart from the distance size,
+              so the change eases in while the camera moves; it grows about its centre, which
+              stays on the anchor. */}
           <div
             style={{
               textAlign: "center",
-              fontFamily: "Inter, sans-serif",
-              transform: `rotate(${seat.alive ? 0 : 90}deg)`,
-              opacity: seat.alive ? 1 : 0.6,
-              userSelect: "none",
-              width: 90,
+              position: "relative",
+              transform: `scale(${plates})`,
+              transition: "transform 0.6s ease",
             }}
           >
-            <div style={{ fontSize: 30, lineHeight: 1, filter: seat.alive ? "none" : "grayscale(1)" }}>
-              {seat.alive ? seat.avatar : "💀"}
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#ece9f5", textShadow: "0 1px 4px #000" }}>
-              {seat.name}
-            </div>
-            {reveal && (
-              <div style={{ fontSize: 11, color: "#9c98b8", textShadow: "0 1px 3px #000" }}>
-                {meta.emoji} {meta.label}
+            {/* Out of flow, so the centred nameplate does not shift when the badge comes and goes. */}
+            {thinking && (
+              <div
+                style={{
+                  position: "absolute",
+                  // Beside the avatar, not above it: in a close-up the space above the
+                  // nameplate belongs to the phase banner.
+                  top: 2,
+                  left: "calc(50% + 18px)",
+                  width: 22,
+                  height: 22,
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 13,
+                  lineHeight: 1,
+                  borderRadius: 999,
+                  background: "#0a0a12",
+                  border: "1px solid #b48cff",
+                  boxShadow: "0 0 10px -2px #b48cff",
+                }}
+              >
+                💭
               </div>
             )}
+            <div
+              style={{
+                textAlign: "center",
+                fontFamily: "Inter, sans-serif",
+                transform: `rotate(${seat.alive ? 0 : 90}deg)`,
+                opacity: seat.alive ? 1 : 0.6,
+                userSelect: "none",
+                width: 90,
+              }}
+            >
+              <div style={{ fontSize: 30, lineHeight: 1, filter: seat.alive ? "none" : "grayscale(1)" }}>
+                {seat.alive ? seat.avatar : "💀"}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#ece9f5", textShadow: "0 1px 4px #000" }}>
+                {seat.name}
+              </div>
+              {reveal && (
+                <div style={{ fontSize: 11, color: "#9c98b8", textShadow: "0 1px 3px #000" }}>
+                  {meta.emoji} {meta.label}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </Html>
@@ -282,34 +357,60 @@ export default function Scene3D({
   showRole,
   playing,
   thinkingId,
+  event,
 }: Scene3DProps) {
   const seatPositions = useMemo<Vec3[]>(() => ringPositions(seats.length, 4.2), [seats.length]);
+  const plates = plateScale(event);
+
+  // A ref, not state: only the rig's frame loop reads it, so grabbing the camera
+  // never re-renders the scene. Every arrival at the end starts the finale afresh.
+  const cameraTaken = useRef(false);
+  useEffect(() => {
+    if (finished) cameraTaken.current = false;
+  }, [finished]);
+  // Stable, so OrbitControls does not re-subscribe its listeners on every step.
+  const takeCamera = useCallback(() => {
+    cameraTaken.current = true;
+  }, []);
 
   return (
     <Canvas
       shadows
       dpr={[1, 2]}
       camera={{ position: [0, 7.5, 9], fov: 42 }}
-      style={{ width: "100%", height: "100%" }}
+      // Out of flow, so the canvas never holds the stage open: the stage's height
+      // follows the viewport and the canvas follows the stage, both ways.
+      style={{ position: "absolute", inset: 0 }}
     >
       <Environment phase={phase} />
       {seats.map((seat, i) => (
-        <Pawn key={seat.id} seat={seat} pos={seatPositions[i]} highlight={highlight} showRole={showRole} thinking={thinkingId === seat.id} />
+        <Pawn
+          key={seat.id}
+          seat={seat}
+          pos={seatPositions[i]}
+          highlight={highlight}
+          showRole={showRole}
+          thinking={thinkingId === seat.id}
+          plates={plates}
+        />
       ))}
       <CameraRig
         seatPositions={seatPositions}
         phase={phase}
         finished={finished}
         highlight={highlight}
+        event={event}
         playing={playing}
+        taken={cameraTaken}
       />
       <OrbitControls
         enabled={!playing}
+        onStart={takeCamera}
         enablePan={false}
         minDistance={4}
         maxDistance={16}
         maxPolarAngle={Math.PI / 2.1}
-        target={[0, 0.6, 0]}
+        target={ORBIT_TARGET}
       />
       <EffectComposer>
         <Bloom intensity={0.9} luminanceThreshold={0.6} luminanceSmoothing={0.3} mipmapBlur />

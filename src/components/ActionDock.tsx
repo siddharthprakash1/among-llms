@@ -10,7 +10,7 @@ import type { PromptKind, SeatAnswer, SeatMeta, SeatPrompt } from "@/lib/human/t
 import { seerClaimText } from "@/lib/human/sanitize";
 import { textKeyAction } from "@/lib/human/clientState";
 import type { ReplaySeat, ReplayState } from "@/lib/replay";
-import { adminHeaders, cn, roleNoun } from "@/lib/ui";
+import { adminHeaders, cn, plural, roleNoun } from "@/lib/ui";
 
 interface Props {
   gameId: string;
@@ -24,6 +24,8 @@ interface Props {
   onSelect(id: number | null): void;
   lastBanner: ReplayState["banner"];
   ghost?: boolean;
+  /** Called with a prompt's id once its form is in the DOM, i.e. after the previous view has animated out. */
+  onPromptShown?(promptId: string): void;
 }
 
 const CONFIRM_VERB: Partial<Record<PromptKind, string>> = {
@@ -46,6 +48,7 @@ export default function ActionDock({
   onSelect,
   lastBanner,
   ghost,
+  onPromptShown,
 }: Props) {
   const reduce = useReducedMotion();
   // What happened to the prompt on this side, until the next `seat` event replaces it.
@@ -78,6 +81,7 @@ export default function ActionDock({
                 seats={seats}
                 selectedId={selectedId}
                 onSelect={onSelect}
+                onShown={onPromptShown}
                 onSettled={(how) => {
                   setSettled({ id: open.id, how });
                   onSelect(null);
@@ -131,9 +135,19 @@ interface FormProps {
   selectedId: number | null;
   onSelect(id: number | null): void;
   onSettled(how: "sent" | "stale"): void;
+  onShown?(promptId: string): void;
 }
 
-function PromptForm({ gameId, prompt, deadline, seats, selectedId, onSelect, onSettled }: FormProps) {
+function PromptForm({
+  gameId,
+  prompt,
+  deadline,
+  seats,
+  selectedId,
+  onSelect,
+  onSettled,
+  onShown,
+}: FormProps) {
   const draftKey = `al_draft_${gameId}_${prompt.id}`;
   const [text, setText] = useState(() => readDraft(draftKey));
   const [busy, setBusy] = useState(false);
@@ -144,6 +158,10 @@ function PromptForm({ gameId, prompt, deadline, seats, selectedId, onSelect, onS
   useEffect(() => {
     writeDraft(draftKey, text);
   }, [draftKey, text]);
+
+  useEffect(() => {
+    onShown?.(prompt.id);
+  }, [onShown, prompt.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -609,7 +627,7 @@ function Countdown({ deadline, budgetMs }: { deadline: number | null; budgetMs: 
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` : `${secs}s`;
 
   return (
-    <div className="w-full sm:w-44 shrink-0 sm:pt-1.5" role="timer" aria-label={`${secs} seconds left`}>
+    <div className="w-full sm:w-44 shrink-0 sm:pt-1.5" role="timer" aria-label={`${plural(secs, "second")} left`}>
       <div
         className={cn(
           "text-[11px] font-semibold tabular-nums text-right mb-1",

@@ -23,6 +23,8 @@ interface Props {
   onSelect?: (id: number) => void;
 }
 
+const DIMMED = 0.45;
+
 export default function PlayerSeat({
   seat,
   highlight,
@@ -44,6 +46,9 @@ export default function PlayerSeat({
   const thinking = thinkingId === seat.id;
   const reveal = showRole || seat.revealed;
   const meta = ROLE_META[seat.role];
+  // A pick fades every seat that cannot be chosen. Your own seat fades only its
+  // face: the YOU halo and your name stay lit so you never lose track of yourself.
+  const outOfPick = selectable === false;
 
   const ringColor = selected
     ? "var(--gold)"
@@ -79,7 +84,7 @@ export default function PlayerSeat({
             "aria-label": `Choose ${seat.name}`,
           }
         : {})}
-      style={{ ...style, opacity: selectable === false ? 0.45 : undefined }}
+      style={{ ...style, opacity: outOfPick && !you ? DIMMED : undefined }}
       className={cn(
         "absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-[88px] transition-opacity",
         selectable && "seat-pick"
@@ -101,7 +106,12 @@ export default function PlayerSeat({
           )}
           style={{ border: `2.5px solid ${ringColor}` }}
         >
-          <span className={cn(!seat.alive && "grayscale")}>{seat.avatar}</span>
+          <span
+            className={cn(!seat.alive && "grayscale", you && "transition-opacity")}
+            style={outOfPick && you ? { opacity: DIMMED } : undefined}
+          >
+            {seat.avatar}
+          </span>
           {!seat.alive && (
             <span className="absolute inset-0 grid place-items-center text-[26px]">💀</span>
           )}

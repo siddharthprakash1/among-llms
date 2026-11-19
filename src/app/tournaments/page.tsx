@@ -1,7 +1,7 @@
 import Link from "next/link";
 import NewTournamentForm from "@/components/NewTournamentForm";
 import { store } from "@/lib/store";
-import { cn } from "@/lib/ui";
+import { cn, plural } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function TournamentsPage() {
                   <div className="min-w-0">
                     <div className="font-semibold truncate">{t.name}</div>
                     <div className="text-xs text-[var(--muted)] mt-0.5">
-                      {t.format === "round_robin" ? "Round robin" : "Knockout"} · {t.roster.length} models
+                      {t.format === "round_robin" ? "Round robin" : "Knockout"} · {plural(t.roster.length, "model")}
                     </div>
                   </div>
                   <span

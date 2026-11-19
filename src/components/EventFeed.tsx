@@ -2,32 +2,36 @@
 
 import { useEffect, useRef } from "react";
 import { LogEntry, ReplaySeat } from "@/lib/replay";
-import { cn, modelLabel } from "@/lib/ui";
+import { cn, followFeedEnd, modelLabel, plural } from "@/lib/ui";
 
 interface Props {
   log: LogEntry[];
   seats: ReplaySeat[];
   youId?: number;
-  /** Height in px of anything pinned over the bottom of the viewport (the play
-   *  screen's action dock): the newest line is scrolled to rest above it. */
+  /** Omitted (replay, live): the newest line is brought into view with scrollIntoView,
+   *  which may also scroll the page. Given, the caller owns the page layout. 0: nothing
+   *  is pinned over the page, so only the list scrolls and a new line never moves the
+   *  page. Above 0: the height in px of a dock pinned over the bottom of the viewport;
+   *  the newest line is scrolled, page included, to rest above it. */
   endClearance?: number;
 }
 
-export default function EventFeed({ log, seats, youId, endClearance = 0 }: Props) {
+export default function EventFeed({ log, seats, youId, endClearance }: Props) {
+  const listRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const seatOf = (id?: number) => seats.find((s) => s.id === id);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    followFeedEnd(listRef.current, endRef.current, endClearance);
   }, [log.length, endClearance]);
 
   return (
     <div className="card h-full flex flex-col overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
         <span className="display text-xl">The table talks</span>
-        <span className="chip">{log.filter((l) => l.tone === "speech").length} statements</span>
+        <span className="chip">{plural(log.filter((l) => l.tone === "speech").length, "statement")}</span>
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2.5">
+      <div ref={listRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2.5">
         {log.map((entry) => {
           if (entry.tone === "speech" || entry.tone === "defense") {
             const seat = seatOf(entry.playerId);

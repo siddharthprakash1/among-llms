@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Tournament } from "@/lib/tournaments/types";
 import { standings, matchWinner } from "@/lib/tournaments/schedule";
-import { cn, modelLabel } from "@/lib/ui";
+import { cn, modelLabel, plural } from "@/lib/ui";
 
 export default function TournamentView({ id }: { id: string }) {
   const [t, setT] = useState<Tournament | null>(null);
@@ -55,7 +55,7 @@ export default function TournamentView({ id }: { id: string }) {
           <span className="chip tag-gold">
             {t.config.format === "round_robin" ? "Round robin" : "Knockout"}
           </span>
-          <span className="chip">{t.config.roster.length} models</span>
+          <span className="chip">{plural(t.config.roster.length, "model")}</span>
           <span className="chip">{t.config.numPlayers}-player tables</span>
         </div>
       </div>

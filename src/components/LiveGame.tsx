@@ -11,7 +11,7 @@ import { DecisionRecord, GameConfig, GameEvent, Player, Transcript } from "@/lib
 import { deriveState } from "@/lib/replay";
 import { playCue } from "@/lib/sound";
 import { decisionShortcut, inspect, thinkingSeat } from "@/lib/inspector";
-import { cn, modelLabel } from "@/lib/ui";
+import { cn, modelLabel, plural } from "@/lib/ui";
 import GameTable from "./GameTable";
 import EventFeed from "./EventFeed";
 import MindInspector, { useRevealOnOpen } from "./MindInspector";
@@ -305,7 +305,7 @@ export default function LiveGame({ id }: { id: string }) {
                 {modelLabel(m)}
               </span>
             ))}
-            <span className="chip">{meta.config.numPlayers} players</span>
+            <span className="chip">{plural(meta.config.numPlayers, "player")}</span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -384,7 +384,7 @@ export default function LiveGame({ id }: { id: string }) {
 
       {!done && (
         <div className="text-center text-xs text-[var(--muted)]">
-          Streaming live · {events.length} events · the models are thinking in real time…
+          Streaming live · {plural(events.length, "event")} · the models are thinking in real time…
         </div>
       )}
     </div>

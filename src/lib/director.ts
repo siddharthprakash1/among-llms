@@ -4,6 +4,8 @@
 // unit-testable with no WebGL. `time` is passed in (never Date.now) so shots
 // stay deterministic and testable.
 
+import type { GameEvent } from "./engine/types";
+
 export type ShotKind = "establish" | "orbit" | "speaker" | "kill" | "vote" | "finale";
 
 export type Vec3 = [number, number, number];
@@ -31,9 +33,63 @@ export interface DirectorInput {
   seatPositions: Vec3[];
   /** Seconds since start (monotonic) — drives idle orbit motion. */
   time: number;
+  /** Kind of the event on screen. The vote has no highlight, so this is how the director sees it. */
+  event?: GameEvent["kind"];
+  /** Width / height of the stage, when known. The whole-table shots widen on narrow stages. */
+  aspect?: number;
 }
 
 const CENTER: Vec3 = [0, 0.6, 0];
+
+// The vote crane: high over the table (75° down, 12 units out), aimed a little past the
+// centre so the far seats sit below the phase banner. Pulled back this far so every seat,
+// nameplate (drawn at plateScale) and fallen pawn stays in frame at any drift angle on a
+// stage down to 440px tall: nameplates keep their pixel size as the stage shrinks, so short
+// is the tight case. Composed for stages at least square; narrower ones get a wider fov.
+const CRANE = { radius: 2.85, height: 11.9, lead: 0.25, aimHeight: 0.3, speed: 0.05, fov: 58, minAspect: 1 };
+
+// The closing orbit, composed for the 732x588 desktop stage.
+const FINALE = { radius: 9, height: 6.5, speed: 0.12, fov: 45, minAspect: 732 / 588 };
+
+/** Ballots and the tally: the beats the crane films. */
+export function isVoteBeat(event?: GameEvent["kind"]): boolean {
+  return event === "vote" || event === "vote_result";
+}
+
+/**
+ * How much larger than usual the stage draws its floating nameplates. The crane films
+ * from about twice the day orbit's distance, where names would shrink to about 6px.
+ */
+export function plateScale(event?: GameEvent["kind"]): number {
+  return isVoteBeat(event) ? 1.5 : 1;
+}
+
+// A nameplate's on-screen scale is this over its distance from the camera, measured in
+// heights of the view (drei Html's distanceFactor), resized only in steps of PLATE_STEP.
+const PLATE_DISTANCE_FACTOR = 6;
+const PLATE_STEP = 1.02;
+
+/**
+ * On-screen scale of a nameplate `distance` units from a camera with a vertical `fov` of
+ * that many degrees: drei Html's distanceFactor size, snapped to 2% steps. Sized
+ * continuously, a moving camera resizes every plate on every frame and the browser
+ * redraws their emoji each time, which held the finale's orbit to about 15 fps on
+ * integrated graphics.
+ */
+export function plateSizeAt(distance: number, fov: number): number {
+  const exact = PLATE_DISTANCE_FACTOR / (2 * Math.tan((fov * Math.PI) / 360) * Math.max(distance, 0.01));
+  return Math.pow(PLATE_STEP, Math.round(Math.log(exact) / Math.log(PLATE_STEP)));
+}
+
+/**
+ * Vertical fov for a whole-table shot composed for stages at least `minAspect` wide. A
+ * narrower stage keeps the composed horizontal field of view, so no seat falls off the
+ * sides; the nameplates, which do not shrink with the stage, get smaller with the view.
+ */
+function fitWidth(fov: number, minAspect: number, aspect?: number): number {
+  if (!aspect || !(aspect < minAspect)) return fov;
+  return (Math.atan((Math.tan((fov * Math.PI) / 360) * minAspect) / aspect) * 360) / Math.PI;
+}
 
 function add(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -62,12 +118,17 @@ function orbit(time: number, radius: number, height: number, speed: number): Vec
 }
 
 export function directShot(input: DirectorInput): Shot {
-  const { phase, finished, highlight, seatPositions, time } = input;
+  const { phase, finished, highlight, seatPositions, time, event, aspect } = input;
   const seat = (id?: number): Vec3 | null =>
     id !== undefined && seatPositions[id] ? seatPositions[id] : null;
 
   if (finished || phase === "over") {
-    return { kind: "finale", position: orbit(time, 9, 6.5, 0.12), target: CENTER, fov: 45 };
+    return {
+      kind: "finale",
+      position: orbit(time, FINALE.radius, FINALE.height, FINALE.speed),
+      target: CENTER,
+      fov: fitWidth(FINALE.fov, FINALE.minAspect, aspect),
+    };
   }
 
   const killSeat = seat(highlight.killId) ?? seat(highlight.eliminatedId);
@@ -79,6 +140,18 @@ export function directShot(input: DirectorInput): Shot {
       target: [killSeat[0], 1.35, killSeat[2]],
       fov: 38,
       focusSeatId: highlight.killId ?? highlight.eliminatedId,
+    };
+  }
+
+  // Ballots and the tally: crane up and drift slowly so the whole table is in view.
+  // A vote's death is the next step and carries `eliminatedId`, so it still gets the
+  // kill close-up above.
+  if (isVoteBeat(event)) {
+    return {
+      kind: "vote",
+      position: orbit(time, CRANE.radius, CRANE.height, CRANE.speed),
+      target: orbit(time, -CRANE.lead, CRANE.aimHeight, CRANE.speed),
+      fov: fitWidth(CRANE.fov, CRANE.minAspect, aspect),
     };
   }
 

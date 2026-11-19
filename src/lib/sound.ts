@@ -1,8 +1,10 @@
 // Synthesized, event-driven sound design. No audio files — every cue is
 // generated with the Web Audio API (oscillators + noise + envelopes), so the
 // repo stays lean and it works offline. Off by default; the choice persists in
-// localStorage. The AudioContext is created lazily on first enable (which comes
-// from a user gesture, satisfying autoplay policies).
+// localStorage. Autoplay policy only lets a gesture start audio (Chrome warns
+// otherwise), so the AudioContext is created inside one: the toggle click, or,
+// when "on" was restored from storage, the first gesture anywhere on the page.
+// Cues requested before that are dropped.
 
 export type SoundCue =
   | "night"
@@ -18,10 +20,13 @@ export type SoundCue =
   | "win_jester";
 
 const STORAGE_KEY = "among-llms:sound";
+// A tap only counts as a user gesture once the finger lifts, hence pointerup/touchend.
+const GESTURES = ["pointerdown", "pointerup", "keydown", "touchstart", "touchend"] as const;
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let enabled = false;
+let unlockArmed = false;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -35,6 +40,7 @@ export function soundEnabled(): boolean {
 export function loadSoundPref(): boolean {
   if (!isBrowser()) return false;
   enabled = window.localStorage.getItem(STORAGE_KEY) === "on";
+  if (enabled && !ctx) armUnlock();
   return enabled;
 }
 
@@ -43,6 +49,20 @@ export function setSoundEnabled(on: boolean): void {
   enabled = on;
   window.localStorage.setItem(STORAGE_KEY, on ? "on" : "off");
   if (on) ensureContext();
+}
+
+function armUnlock(): void {
+  if (unlockArmed) return;
+  unlockArmed = true;
+  const unlock = () => {
+    // Not a gesture yet (a finger going down, Escape): a context made now would
+    // still start suspended, so wait for one that counts.
+    if (window.navigator.userActivation?.hasBeenActive === false) return;
+    for (const type of GESTURES) window.removeEventListener(type, unlock, true);
+    unlockArmed = false;
+    if (enabled) ensureContext();
+  };
+  for (const type of GESTURES) window.addEventListener(type, unlock, { capture: true, passive: true });
 }
 
 function ensureContext(): AudioContext | null {
@@ -108,10 +128,10 @@ function noise(start: number, dur: number, peak = 0.4, hp = 400): void {
 }
 
 export function playCue(cue: SoundCue): void {
-  if (!enabled) return;
-  const c = ensureContext();
-  if (!c) return;
-  const t = c.currentTime;
+  // Never creates the context: cues are timers and stream events, not gestures.
+  if (!enabled || !ctx) return;
+  if (ctx.state === "suspended") void ctx.resume();
+  const t = ctx.currentTime;
   switch (cue) {
     case "night":
       tone(220, t, 1.4, "sine", 0.25, 165);

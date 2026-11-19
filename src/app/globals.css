@@ -184,7 +184,15 @@ body {
   color: var(--text);
 }
 
-/* The header nav scrolls sideways on phones instead of widening the page. */
+/* The replay player is sized to fill a large viewport exactly (ReplayPlayer's stage
+   height), so the footer below it would only add a page scroll while a game plays. */
+@media (min-width: 64rem) {
+  body:has([data-fit-viewport]) footer {
+    display: none;
+  }
+}
+
+/* Header rows scroll sideways on very narrow screens instead of widening the page. */
 .nav-scroll {
   scrollbar-width: none;
 }

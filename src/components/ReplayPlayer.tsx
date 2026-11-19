@@ -13,7 +13,7 @@ import {
   provenanceSummary,
   thinkingSeat,
 } from "@/lib/inspector";
-import { ROLE_META, cn, modelLabel } from "@/lib/ui";
+import { ROLE_META, cn, modelLabel, plural } from "@/lib/ui";
 import { playCue, SoundCue } from "@/lib/sound";
 import { GameEvent } from "@/lib/engine/types";
 import dynamic from "next/dynamic";
@@ -32,6 +32,15 @@ const Scene3D = dynamic(() => import("./Scene3D"), {
 });
 
 const SPEEDS = [1, 2, 4] as const;
+
+// Stage and side column height on large screens: up to 600px, but never so tall that
+// the controls bar drops below the fold. 312px is the rest of the page around the
+// stage (header, main padding, title block, both gaps, controls bar), so the player
+// fits a 1440x900 viewport exactly. The Classic table still fits at that height.
+const STAGE_HEIGHT = "lg:min-h-[clamp(440px,calc(100dvh-312px),600px)]";
+// With Minds open the inspector card (76% of the column) needs about 445px, or the
+// provenance chips scroll out of it, so the floor rises and short viewports scroll.
+const STAGE_HEIGHT_MINDS = "lg:min-h-[clamp(588px,calc(100dvh-312px),600px)]";
 
 // Stable identity, so a legacy transcript does not defeat the inspector memo.
 const NO_DECISIONS: DecisionRecord[] = [];
@@ -192,9 +201,12 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
   }, []);
 
   const tableModels = Array.from(new Set(transcript.players.map((p) => p.model)));
+  const stageHeight = minds ? STAGE_HEIGHT_MINDS : STAGE_HEIGHT;
 
   return (
-    <div className="space-y-5">
+    // While the game plays out the player is the whole page: globals.css drops the site
+    // footer on large screens so the page fits the viewport without a scrollbar.
+    <div className="space-y-5" data-fit-viewport={state.finished ? undefined : ""}>
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -207,7 +219,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
                 {modelLabel(m)}
               </span>
             ))}
-            <span className="chip">{transcript.config.numPlayers} players</span>
+            <span className="chip">{plural(transcript.config.numPlayers, "player")}</span>
             <span className="chip">seed {transcript.config.seed}</span>
           </div>
         </div>
@@ -251,7 +263,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
 
       {/* main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
-        <div className="glass overflow-hidden relative min-h-[440px] lg:min-h-[600px]">
+        <div className={cn("glass overflow-hidden relative min-h-[440px]", stageHeight)}>
           {view === "cinema" && can3d ? (
             <>
               <Scene3D
@@ -262,6 +274,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
                 showRole={spoil || state.finished}
                 playing={playing}
                 thinkingId={thinkingId}
+                event={transcript.events[step]?.kind}
               />
               {state.banner && (
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none px-4">
@@ -288,7 +301,7 @@ export default function ReplayPlayer({ transcript }: { transcript: Transcript })
             </div>
           )}
         </div>
-        <div className="lg:relative lg:min-h-[600px]">
+        <div className={cn("lg:relative", stageHeight)}>
           <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
             {minds && (
               // Fixed height, not a cap: a content-sized card resizes on every step

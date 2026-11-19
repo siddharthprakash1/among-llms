@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { ModelProfile as ModelProfileData } from "@/lib/stats";
 import { winRate } from "@/lib/elo";
-import { cn, modelLabel, pct, relativeTime, ROLE_META } from "@/lib/ui";
+import { cn, modelLabel, pct, plural, relativeTime, ROLE_META } from "@/lib/ui";
 import EloSparkline from "./EloSparkline";
 
 /** Percentage, or an em dash when there's nothing to divide (denominator 0). */
@@ -62,7 +62,7 @@ export default function ModelProfile({ profile }: { profile: ModelProfileData })
       {rating.asJester.games > 0 && (
         <div className="card p-4 text-sm">
           🃏 As the Jester: <span className="font-semibold">{rating.asJester.wins}</span> /{" "}
-          {rating.asJester.games} games won by getting lynched ({safePct(rating.asJester.wins, rating.asJester.games)}).
+          {plural(rating.asJester.games, "game")} won by getting lynched ({safePct(rating.asJester.wins, rating.asJester.games)}).
         </div>
       )}
 

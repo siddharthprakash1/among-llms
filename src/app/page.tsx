@@ -3,7 +3,7 @@ import NewGameForm from "@/components/NewGameForm";
 import LeaderboardTable from "@/components/LeaderboardTable";
 import { recentGames, leaderboard } from "@/lib/games";
 import { rankedModels } from "@/lib/elo";
-import { modelLabel, relativeTime } from "@/lib/ui";
+import { modelLabel, plural, relativeTime } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +96,7 @@ export default async function HomePage() {
                   <span className="text-xs text-[var(--muted)]">{relativeTime(g.createdAt)}</span>
                 </div>
                 <div className="text-xs text-[var(--muted)] mt-2">
-                  {g.numPlayers} players · {g.days} days
+                  {plural(g.numPlayers, "player")} · {plural(g.days, "day")}
                 </div>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {g.models.slice(0, 4).map((m) => (
