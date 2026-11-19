@@ -273,18 +273,43 @@ export function extractJson(text: string): unknown | null {
 
 function coerceTarget(value: unknown, view: PlayerView): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  if (Array.isArray(value)) return value.length === 1 ? coerceTarget(value[0], view) : null;
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed.toLowerCase() === "null" || trimmed === "") return null;
     const asNum = Number(trimmed);
     if (Number.isFinite(asNum)) return Math.trunc(asNum);
-    // try to match a name
-    const byName = view.players.find(
-      (p) => p.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (byName) return byName.id;
+    return seatFromLabel(trimmed, view);
   }
   return null;
+}
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Words a model may wrap around a seat when it copies the roster line "[3] Gray — alive".
+const LABEL_WORDS = /(?<![\p{L}\p{N}])(?:seat|player|id|alive)(?![\p{L}\p{N}])/giu;
+
+/**
+ * A seat written as a label instead of a bare number: "gray", "[3]", "Seat 3",
+ * "3 (Gray)". Every name and number in it must point at the same seat, and
+ * nothing else may be left over: two seats, or a sentence, is no target.
+ */
+function seatFromLabel(label: string, view: PlayerView): number | null {
+  const ids = new Set<number>();
+  let rest = label;
+  for (const p of view.players) {
+    if (!p.name) continue;
+    const name = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(p.name)}(?![\\p{L}\\p{N}])`, "giu");
+    const next = rest.replace(name, " ");
+    if (next !== rest) ids.add(p.id);
+    rest = next;
+  }
+  rest = rest.replace(/\d+/g, (digits) => {
+    ids.add(Number(digits));
+    return " ";
+  });
+  if (/[\p{L}\p{N}]/u.test(rest.replace(LABEL_WORDS, " "))) return null;
+  return ids.size === 1 ? [...ids][0] : null;
 }
 
 export function parseTargetResponse(text: string, view: PlayerView): number | null {

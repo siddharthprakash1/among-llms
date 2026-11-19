@@ -14,7 +14,7 @@ import {
   VoteDecision,
   WitchDecision,
 } from "../engine/types";
-import { MockBrain } from "./mockBrain";
+import { MockBrain, SEER_CLAIM_TAG } from "./mockBrain";
 import { ProviderConfig } from "./registry";
 import {
   SYSTEM_PROMPT,
@@ -40,6 +40,27 @@ const MAX_TOKENS = 512;
 // Public speech is only ever read from a named JSON key, never from raw text.
 const STRICT = { allowRaw: false } as const;
 const MAX_ATTEMPTS = 2;
+
+const UNPAIRED_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const CRYSTAL_BALL = /\u{1F52E}\uFE0F?/gu;
+
+/**
+ * Invariant 5.5: bots treat any statement that starts with SEER_CLAIM_TAG as
+ * ground truth, so only the real Seer may ever emit U+1F52E. Runs on decoded
+ * JSON, where "\ud83d\udd2e" escapes are already the emoji. Lone surrogate
+ * halves go first, so deleting an emoji cannot join two halves into a new one.
+ * null (nothing left to say) makes the reply unusable.
+ */
+function guardSeerTag(text: string | null, view: PlayerView): string | null {
+  if (text === null || view.self.role === "seer") return text;
+  let s = text.replace(UNPAIRED_SURROGATE, "");
+  for (let prev = ""; prev !== s; ) {
+    prev = s;
+    s = s.replace(CRYSTAL_BALL, "");
+  }
+  s = s.trim();
+  return s && !s.startsWith(SEER_CLAIM_TAG) && !s.includes("\u{1F52E}") ? s : null;
+}
 
 export class LlmBrain implements Brain {
   readonly id: string;
@@ -175,7 +196,7 @@ export class LlmBrain implements Brain {
     return this.decide(
       trace,
       () => statementPrompt(view),
-      (text) => parseTextResponse(text, ["statement"], STRICT),
+      (text) => guardSeerTag(parseTextResponse(text, ["statement"], STRICT), view),
       (tr) => this.fallback.dayStatement(view, tr)
     );
   }
@@ -196,7 +217,7 @@ export class LlmBrain implements Brain {
     return this.decide(
       trace,
       () => wolfChatPrompt(view, round),
-      (text) => parseTextResponse(text, ["message", "statement"], STRICT),
+      (text) => guardSeerTag(parseTextResponse(text, ["message", "statement"], STRICT), view),
       (tr) => this.fallback.wolfChat(view, round, tr)
     );
   }
@@ -205,15 +226,15 @@ export class LlmBrain implements Brain {
     return this.decide<AccuseDecision>(
       trace,
       () => accusePrompt(view),
-      (text) =>
-        extractJson(text) === null
-          ? null
-          : {
-              targetId: parseTargetResponse(text, view),
-              // Only "accusation" is ever spoken: a stray "reason" key may be an
-              // abbreviated private "reasoning" and must not reach the table.
-              text: parseTextResponse(text, ["accusation"], STRICT) ?? undefined,
-            },
+      (text) => {
+        if (extractJson(text) === null) return null;
+        // Only "accusation" is ever spoken: a stray "reason" key may be an
+        // abbreviated private "reasoning" and must not reach the table.
+        const spoken = parseTextResponse(text, ["accusation"], STRICT);
+        const said = guardSeerTag(spoken, view);
+        if (spoken !== null && said === null) return null;
+        return { targetId: parseTargetResponse(text, view), text: said ?? undefined };
+      },
       (tr) => this.fallback.accuse(view, tr)
     );
   }
@@ -222,7 +243,7 @@ export class LlmBrain implements Brain {
     return this.decide(
       trace,
       () => defendPrompt(view, against),
-      (text) => parseTextResponse(text, ["statement"], STRICT),
+      (text) => guardSeerTag(parseTextResponse(text, ["statement"], STRICT), view),
       (tr) => this.fallback.defend(view, against, tr)
     );
   }

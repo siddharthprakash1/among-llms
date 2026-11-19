@@ -317,3 +317,28 @@ describe("wall-clock boundary", () => {
     expect(strip(a)).toEqual(strip(b));
   });
 });
+
+describe("LlmBrain reads a seat label as the model's own target", () => {
+  it("a vote written as a name or a seat label is not a fallback", async () => {
+    for (const label of ["Cleo", "cleo", "[2]", "Seat 2", "2 (Cleo)"]) {
+      stubReply(JSON.stringify({ reasoning: "r", target: label }));
+      const trace: DecisionTrace = {};
+      expect(await brain().dayVote(makeView("villager"), trace), label).toEqual({ targetId: 2 });
+      expect(trace.source, label).toBe("model");
+    }
+  });
+
+  it("an accusation at a seat label is made, not silently passed", async () => {
+    stubReply(JSON.stringify({ reasoning: "r", target: "Seat 3", accusation: "Dov keeps dodging." }));
+    const trace: DecisionTrace = {};
+    expect(await brain().accuse(makeView("villager"), trace)).toEqual({ targetId: 3, text: "Dov keeps dodging." });
+    expect(trace.source).toBe("model");
+  });
+
+  it("an ambiguous label is still no target", async () => {
+    stubReply(JSON.stringify({ reasoning: "r", target: "Cleo or Dov" }));
+    const trace: DecisionTrace = {};
+    await brain().dayVote(makeView("villager"), trace);
+    expect(trace).toMatchObject({ source: "fallback", fallbackReason: "invalid" });
+  });
+});
